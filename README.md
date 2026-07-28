@@ -30,7 +30,11 @@ localscrub scrub notes.txt --fail-on-detect     # CI gate: exit 3 if anything fo
 
 localscrub synth -n 500 --seed 42 -o data/corpora/dev.jsonl   # synthetic eval corpus
 localscrub synth -n 500 --seed 42 --diversify -o dev.jsonl    # + local-LLM paraphrase (Ollama)
+localscrub eval data/corpora/dev.jsonl                        # per-entity precision/recall
 ```
+
+Current accuracy numbers (including what stage 1 honestly cannot catch yet)
+live in [docs/results.md](docs/results.md).
 
 Or from Python:
 

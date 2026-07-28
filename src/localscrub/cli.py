@@ -16,8 +16,9 @@ import typer
 
 from localscrub.analyzer import scrub as scrub_text
 from localscrub.config import ScrubConfig
-from localscrub.corpus import generate_corpus, write_jsonl
+from localscrub.corpus import generate_corpus, read_jsonl, write_jsonl
 from localscrub.corpus.diversify import DEFAULT_HOST, DEFAULT_MODEL, OllamaError, diversify_corpus
+from localscrub.evaluation import evaluate
 from localscrub.report import build_report, write_audit
 
 app = typer.Typer(name="localscrub", no_args_is_help=True)
@@ -180,3 +181,44 @@ def synth(
         # --out writes real UTF-8 instead.
         for note in notes:
             typer.echo(json.dumps(note.to_dict(), ensure_ascii=True))
+
+
+@app.command("eval")
+def eval_corpus(
+    corpus: Annotated[
+        Path,
+        typer.Argument(help="Gold-labeled JSONL corpus (as written by `localscrub synth`)."),
+    ],
+    json_out: Annotated[
+        bool,
+        typer.Option("--json", help="Print the full JSON report instead of the table."),
+    ] = False,
+    threshold: Annotated[
+        float,
+        typer.Option("--threshold", min=0.0, max=1.0, help="Accept threshold (default 0.8)."),
+    ] = 0.8,
+) -> None:
+    """Score the analyzer against a gold corpus: per-entity precision/recall.
+
+    Prints a markdown results table (relaxed = type + overlap, strict =
+    type + exact boundaries) plus redaction recall — the fraction of gold
+    spans fully removed from the output, escalations included.
+    """
+    try:
+        notes = read_jsonl(corpus)
+    except (OSError, ValueError, KeyError) as exc:
+        typer.secho(f"cannot read corpus {corpus}: {exc}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+    if not notes:
+        typer.secho(f"corpus {corpus} is empty", err=True, fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    report = evaluate(notes, config=ScrubConfig(accept_threshold=threshold))
+    if json_out:
+        typer.echo(json.dumps(report.to_dict(), indent=2))
+    else:
+        typer.echo(report.format_table())
+        typer.echo(
+            f"\n{report.notes} notes, {report.total_gold} gold spans; "
+            f"redaction recall {report.redaction_recall:.3f}"
+        )

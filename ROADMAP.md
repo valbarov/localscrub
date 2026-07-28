@@ -55,7 +55,8 @@ Model backend is pluggable:
 - [ ] i2b2/n2c2 2014 de-identification corpus for literature-comparable numbers
       (currently unavailable upstream; evaluation-only when obtainable, never redistributed)
 - [ ] Ollama backend: structured extraction on escalated spans
-- [ ] Eval harness: per-entity precision/recall on every change; results table in repo
+- [x] Eval harness: per-entity precision/recall on every change (regression floors in
+      `tests/test_evaluation.py`); results table in [docs/results.md](docs/results.md)
 - [ ] LoRA fine-tune recipe on synthetic data, with before/after numbers
 
 ### M3 — v0.1

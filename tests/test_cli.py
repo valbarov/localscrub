@@ -110,3 +110,34 @@ def test_synth_note_type_filter():
 def test_synth_unknown_note_type_exit_2():
     result = runner.invoke(app, ["synth", "--note-type", "radiology"])
     assert result.exit_code == 2
+
+
+def test_eval_prints_table(tmp_path):
+    corpus = tmp_path / "corpus.jsonl"
+    assert runner.invoke(app, ["synth", "-n", "5", "--out", str(corpus)]).exit_code == 0
+    result = runner.invoke(app, ["eval", str(corpus)])
+    assert result.exit_code == 0
+    assert "| EMAIL |" in result.output
+    assert "redaction recall" in result.output
+
+
+def test_eval_json_report(tmp_path):
+    corpus = tmp_path / "corpus.jsonl"
+    runner.invoke(app, ["synth", "-n", "5", "--out", str(corpus)])
+    result = runner.invoke(app, ["eval", str(corpus), "--json"])
+    assert result.exit_code == 0
+    report = json.loads(result.output)
+    assert report["notes"] == 5
+    assert "relaxed_overall" in report
+
+
+def test_eval_missing_corpus_exit_1(tmp_path):
+    result = runner.invoke(app, ["eval", str(tmp_path / "absent.jsonl")])
+    assert result.exit_code == 1
+
+
+def test_eval_empty_corpus_exit_1(tmp_path):
+    corpus = tmp_path / "empty.jsonl"
+    corpus.write_text("", encoding="utf-8")
+    result = runner.invoke(app, ["eval", str(corpus)])
+    assert result.exit_code == 1
