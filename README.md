@@ -27,6 +27,9 @@ localscrub scrub notes.txt --json               # print the JSON entity report
 localscrub scrub notes.txt -o clean.txt --report report.json
 localscrub scrub --report-only < notes.txt      # detect without rewriting
 localscrub scrub notes.txt --fail-on-detect     # CI gate: exit 3 if anything found
+
+localscrub synth -n 500 --seed 42 -o data/corpora/dev.jsonl   # synthetic eval corpus
+localscrub synth -n 500 --seed 42 --diversify -o dev.jsonl    # + local-LLM paraphrase (Ollama)
 ```
 
 Or from Python:

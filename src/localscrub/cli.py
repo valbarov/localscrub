@@ -16,6 +16,8 @@ import typer
 
 from localscrub.analyzer import scrub as scrub_text
 from localscrub.config import ScrubConfig
+from localscrub.corpus import generate_corpus, write_jsonl
+from localscrub.corpus.diversify import DEFAULT_HOST, DEFAULT_MODEL, OllamaError, diversify_corpus
 from localscrub.report import build_report, write_audit
 
 app = typer.Typer(name="localscrub", no_args_is_help=True)
@@ -99,3 +101,82 @@ def scrub(
 
     if fail_on_detect and (result.entities or result.escalations):
         raise typer.Exit(3)
+
+
+@app.command()
+def synth(
+    count: Annotated[
+        int,
+        typer.Option("--count", "-n", min=1, help="Number of notes to generate."),
+    ] = 100,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="RNG seed; the same seed always yields the same corpus."),
+    ] = 0,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", "-o", help="Write JSONL here instead of stdout."),
+    ] = None,
+    note_type: Annotated[
+        list[str] | None,
+        typer.Option("--note-type", help="Restrict to these note types (repeatable)."),
+    ] = None,
+    diversify: Annotated[
+        bool,
+        typer.Option(
+            "--diversify",
+            help="Paraphrase prose with a local Ollama model (needs a running GPU model); "
+            "gold spans stay exact, rejected rewrites fall back to template prose.",
+        ),
+    ] = False,
+    model: Annotated[
+        str,
+        typer.Option("--model", help="Ollama model for --diversify."),
+    ] = DEFAULT_MODEL,
+    ollama_host: Annotated[
+        str,
+        typer.Option("--ollama-host", help="Ollama server for --diversify."),
+    ] = DEFAULT_HOST,
+) -> None:
+    """Generate a synthetic clinical-note corpus with gold PHI spans (JSONL).
+
+    Every identifier is fabricated from reserved/fictional ranges — no real
+    PHI is involved at any point. One JSON object per line: id, note_type,
+    text, and the exact gold entities (type, start, end, text).
+    """
+    try:
+        notes = generate_corpus(count, seed=seed, note_types=note_type)
+    except ValueError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(2) from exc
+
+    if diversify:
+
+        def _progress(done: int, total: int) -> None:
+            typer.secho(f"diversify {done}/{total}", err=True)
+
+        try:
+            notes, fallbacks = diversify_corpus(
+                notes, model=model, host=ollama_host, seed=seed, on_progress=_progress
+            )
+        except OllamaError as exc:
+            typer.secho(str(exc), err=True, fg=typer.colors.RED)
+            raise typer.Exit(1) from exc
+        if fallbacks:
+            typer.secho(
+                f"{fallbacks}/{len(notes)} rewrites rejected; those notes keep template prose",
+                err=True,
+                fg=typer.colors.YELLOW,
+            )
+
+    if out is not None:
+        try:
+            write_jsonl(notes, out)
+        except OSError as exc:
+            typer.secho(f"cannot write {out}: {exc}", err=True, fg=typer.colors.RED)
+            raise typer.Exit(1) from exc
+    else:
+        # ensure_ascii guards against non-UTF-8 console encodings on Windows;
+        # --out writes real UTF-8 instead.
+        for note in notes:
+            typer.echo(json.dumps(note.to_dict(), ensure_ascii=True))

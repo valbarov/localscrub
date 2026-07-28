@@ -47,7 +47,9 @@ Model backend is pluggable:
 - [ ] Optional `[ner]` extra: spaCy NAME/GEO recognizer (may land with M2)
 
 ### M2 — stage 2: local LLM + evaluation
-- [ ] Synthetic corpus generator (fake clinical notes with planted entities, scored ground truth)
+- [x] Synthetic corpus generator (fake clinical notes with planted entities, scored ground
+      truth): `localscrub synth` emits JSONL with exact gold spans; optional `--diversify`
+      paraphrases prose with a local Ollama model, fail-closed on span damage
 - [ ] MTSamples-injection benchmark: synthetic PHI planted at known positions in public
       medical-transcription samples → authentic prose, perfect ground truth, fully reproducible
 - [ ] i2b2/n2c2 2014 de-identification corpus for literature-comparable numbers
