@@ -44,7 +44,9 @@ Model backend is pluggable:
       are redacted fail-closed and escalated to stage 2
 - [x] CLI: `localscrub scrub file.txt` → redacted text + JSON entity report
       (+ `--report-only`, `--fail-on-detect`, JSONL audit log)
-- [ ] Optional `[ner]` extra: spaCy NAME/GEO recognizer (may land with M2)
+- [x] Optional `[ner]` extra: pretrained clinical NER recognizer for NAME/GEO
+      (`obi/deid_roberta_i2b2`, CPU; landed with M2 — chosen over plain spaCy because
+      it is trained on the i2b2 de-id task itself)
 
 ### M2 — stage 2: local LLM + evaluation
 - [x] Synthetic corpus generator (fake clinical notes with planted entities, scored ground

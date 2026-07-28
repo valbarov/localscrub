@@ -163,10 +163,13 @@ def apply_stage2(
 
 
 def scrub(
-    text: str, config: ScrubConfig | None = None, stage2: Stage2 | None = None
+    text: str,
+    config: ScrubConfig | None = None,
+    stage2: Stage2 | None = None,
+    recognizers: Sequence[Recognizer] | None = None,
 ) -> ScrubResult:
-    """Scrub ``text`` with the default recognizer set, optionally cascading."""
-    result = Analyzer(config=config).analyze(text)
+    """Scrub ``text`` (default recognizer set unless given), optionally cascading."""
+    result = Analyzer(recognizers=recognizers, config=config).analyze(text)
     if stage2 is not None:
         result = apply_stage2(result, stage2, config)
     return result

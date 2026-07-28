@@ -27,8 +27,7 @@ ENTITY_SLOTS: dict[str, EntityType] = {
     "patient": EntityType.NAME,
     "provider": EntityType.NAME,
     "relative": EntityType.NAME,
-    "street": EntityType.GEO_SUBDIVISION,
-    "city": EntityType.GEO_SUBDIVISION,
+    "address": EntityType.GEO_SUBDIVISION,
     "dob": EntityType.DATE,
     "visit_date": EntityType.DATE,
     "admit_date": EntityType.DATE,
@@ -117,7 +116,7 @@ Visit date: {visit_date}
 
 The patient, {age89}, was accompanied by {relative} and reports {complaint}
 of {duration}. Longstanding {diagnosis}; {medication} unchanged. BP {bp}.
-Home address confirmed as {street}, {city}. Follow-up {followup_date};
+Home address confirmed as {address}. Follow-up {followup_date};
 front desk will call {phone} to confirm.
 
 Dictated by {provider}, MD
@@ -135,7 +134,7 @@ Admitted: {admit_date}    Discharged: {discharge_date}
 and discharged in improved condition on {medication}. Discharge vitals:
 BP {bp}, HR {hr}. Member ID: {plan_id}. Follow-up with {provider} in
 {specialty} on {followup_date}; the office ({phone}) will arrange transport
-to {street}, {city}. After-visit summary posted to {url}.
+to {address}. After-visit summary posted to {url}.
 """,
     ),
     NoteTemplate(
@@ -151,7 +150,7 @@ patient prefers contact at {email}.
 
 Sincerely,
 {provider}, MD
-{street}, {city}
+{address}
 """,
     ),
     NoteTemplate(
@@ -172,7 +171,7 @@ Seen by {provider} on rounds {visit_date}.
 Guarantor: {patient}
 Account #: {account}
 Member ID: {plan_id}
-Statement address: {street}, {city}
+Statement address: {address}
 
 Copay for the {visit_date} visit charged to card {credit_card}. Patient
 called from {phone} to confirm the balance; SSN {ssn} verified for identity.

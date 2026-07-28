@@ -28,6 +28,7 @@ localscrub scrub notes.txt -o clean.txt --report report.json
 localscrub scrub --report-only < notes.txt      # detect without rewriting
 localscrub scrub notes.txt --fail-on-detect     # CI gate: exit 3 if anything found
 localscrub scrub notes.txt --llm                # + stage 2: local LLM via Ollama
+localscrub scrub notes.txt --ner                # + pretrained clinical NER (CPU)
 
 localscrub synth -n 500 --seed 42 -o data/corpora/dev.jsonl   # synthetic eval corpus
 localscrub synth -n 500 --seed 42 --diversify -o dev.jsonl    # + local-LLM paraphrase (Ollama)
@@ -51,9 +52,11 @@ result.escalations   # spans stage 1 couldn't settle — stage 2's work queue
 Stage 1 (rules) currently detects: emails, phone/fax numbers, SSNs, credit
 cards (Luhn-validated), IP addresses, URLs, dates and ages over 89, and
 labeled MRN / health-plan / account identifiers. Uncertain or ambiguous spans
-are redacted fail-closed *and* flagged for stage-2 adjudication. Stage 2
-(`--llm`, or `scrub(text, stage2=LlmExtractor())`) runs a local Ollama model
-for person/place names and narrative identifiers; see
+are redacted fail-closed *and* flagged for stage-2 adjudication. The `[ner]`
+extra (`pip install 'localscrub[ner]'`, then `--ner`) adds a pretrained
+clinical NER model for person/place names on CPU. Stage 2 (`--llm`, or
+`scrub(text, stage2=LlmExtractor())`) runs a local Ollama model for
+narrative identifiers and escalation adjudication; see
 [ADR 0002](docs/decisions/0002-stage2-llm-interface.md) for its contract.
 
 ## Entity coverage

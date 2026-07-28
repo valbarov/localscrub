@@ -98,10 +98,8 @@ def _slot_key(slot: str) -> str:
 def _fabricate(key: str, fab: Fabricator, values: dict[str, str]) -> str:
     if key in ("patient", "provider", "relative"):
         return fab.name()
-    if key == "street":
-        return fab.street_address()
-    if key == "city":
-        return fab.city_state_zip()
+    if key == "address":
+        return fab.address()
     if key in ("dob", "visit_date", "admit_date", "discharge_date", "followup_date"):
         return fab.date()
     if key == "age89":

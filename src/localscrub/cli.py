@@ -20,6 +20,7 @@ from localscrub.corpus import generate_corpus, read_jsonl, write_jsonl
 from localscrub.corpus.diversify import diversify_corpus
 from localscrub.evaluation import evaluate
 from localscrub.llm import DEFAULT_HOST, DEFAULT_MODEL, OllamaClient, OllamaError
+from localscrub.recognizers import NerRecognizer, Recognizer, default_recognizers
 from localscrub.report import build_report, write_audit
 from localscrub.stage2 import LlmExtractor
 
@@ -29,6 +30,16 @@ app = typer.Typer(name="localscrub", no_args_is_help=True)
 @app.callback()
 def main() -> None:
     """Local-first PHI/PII de-identification. Your data never leaves your machine."""
+
+
+def _recognizers_with_ner() -> tuple[Recognizer, ...]:
+    """Default set plus the pretrained NER model; exit 1 if the extra is missing."""
+    try:
+        ner = NerRecognizer()
+    except ImportError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+    return (*default_recognizers(), ner)
 
 
 def _read_input(path: Path | None) -> tuple[str, str]:
@@ -99,13 +110,22 @@ def scrub(
         str,
         typer.Option("--ollama-host", help="Ollama server for --llm."),
     ] = DEFAULT_HOST,
+    ner: Annotated[
+        bool,
+        typer.Option(
+            "--ner",
+            help="Add the pretrained clinical NER recognizer for names/places "
+            "(requires the [ner] extra).",
+        ),
+    ] = False,
 ) -> None:
     """Scrub PHI/PII from a text file: redacted text + JSON entity report."""
     text, source = _read_input(path)
     config = ScrubConfig(accept_threshold=threshold)
     stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
+    recognizers = _recognizers_with_ner() if ner else None
     try:
-        result = scrub_text(text, config, stage2=stage2)
+        result = scrub_text(text, config, stage2=stage2, recognizers=recognizers)
     except OllamaError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(1) from exc
@@ -232,6 +252,13 @@ def eval_corpus(
         str,
         typer.Option("--ollama-host", help="Ollama server for --llm."),
     ] = DEFAULT_HOST,
+    ner: Annotated[
+        bool,
+        typer.Option(
+            "--ner",
+            help="Add the pretrained clinical NER recognizer (requires the [ner] extra).",
+        ),
+    ] = False,
 ) -> None:
     """Score the analyzer against a gold corpus: per-entity precision/recall.
 
@@ -249,9 +276,13 @@ def eval_corpus(
         raise typer.Exit(1)
 
     stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
+    recognizers = _recognizers_with_ner() if ner else None
     try:
         report = evaluate(
-            notes, config=ScrubConfig(accept_threshold=threshold), stage2=stage2
+            notes,
+            config=ScrubConfig(accept_threshold=threshold),
+            stage2=stage2,
+            recognizers=recognizers,
         )
     except OllamaError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)

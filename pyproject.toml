@@ -33,6 +33,12 @@ dependencies = ["typer>=0.12"]
 [project.scripts]
 localscrub = "localscrub.cli:app"
 
+[project.optional-dependencies]
+ner = [
+    "torch>=2.13.0",
+    "transformers>=4.40",
+]
+
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 

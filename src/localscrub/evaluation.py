@@ -26,6 +26,7 @@ from localscrub.analyzer import Analyzer, Stage2, apply_stage2
 from localscrub.config import ScrubConfig
 from localscrub.corpus.generator import GoldSpan, SyntheticNote
 from localscrub.entities import EntityType
+from localscrub.recognizers import Recognizer
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,10 +167,11 @@ def evaluate(
     notes: Sequence[SyntheticNote],
     config: ScrubConfig | None = None,
     stage2: Stage2 | None = None,
+    recognizers: Sequence[Recognizer] | None = None,
 ) -> EvalReport:
     """Run the analyzer (optionally cascading into stage 2) and score it."""
     cfg = config if config is not None else ScrubConfig()
-    analyzer = Analyzer(config=cfg)
+    analyzer = Analyzer(recognizers=recognizers, config=cfg)
     gold_by_type: dict[EntityType, int] = defaultdict(int)
     redacted_by_type: dict[EntityType, int] = defaultdict(int)
     counts: dict[bool, dict[EntityType, list[int]]] = {

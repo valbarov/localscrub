@@ -123,14 +123,84 @@ resolved; escalations it is silent on stay escalated and redacted — a
 - Article hook: "ask the model for what it can do (copy), verify what it
   can't (locate), and never let its silence undo a redaction."
 
+## Step 5 — the `[ner]` extra: pretrained model vs. fine-tune, answered empirically
+
+**The question** (from the maintainer): would a model pretrained for de-id
+beat fine-tuning our LLM? **Answer: for template-corpus categories, yes,
+decisively — and it reshapes what the fine-tune is for.**
+
+**What:** `obi/deid_roberta_i2b2` (125M-parameter token classifier trained
+on the i2b2 2014 de-id corpus) wrapped as a stage-1 recognizer behind an
+optional `[ner]` extra (`pip install 'localscrub[ner]'`, flags `--ner`).
+Only PATIENT/STAFF→NAME and LOC→GEO labels are mapped; dates, phones,
+emails stay with the regexes, whose boundaries are already exact.
+
+**Headline numbers (50 notes, seed 42, all on the same corpus):**
+
+| config | relaxed F1 | redaction recall | NAME strict F1 | GEO fully redacted | latency/note |
+|---|---|---|---|---|---|
+| stage 1 | 0.79 | 0.65 | 0.00 | 0.00 | µs, CPU |
+| + NER | 0.97 | 0.944 | 0.76 | 0.73 | 185 ms, CPU |
+| + LLM | 0.97 | 0.933 | 0.93 | 0.03 | 11.4 s, GPU |
+| + NER + LLM | 0.96 | 0.944 | 0.76 | 0.73 | ~8 s, GPU |
+
+**The debugging story (best material in this step — three real bugs and a
+gold-standard flaw, all surfaced by the eval harness in one afternoon):**
+
+1. *First run: EMAIL recall fell 1.00 → 0.53 when NER was added.* Adding a
+   recognizer must never hurt another's typed recall — the eval caught an
+   integration bug immediately. Root cause #1: our span-merge glued model
+   spans across a paragraph break (`name@example.org.\n\nNext Name` became
+   one NAME), because the gap regex treated `.\n\n` as joinable punctuation.
+2. *Second run: still 0.53.* Root cause #2 was upstream: the HF pipeline's
+   own aggregation produced a single PATIENT group across that same
+   paragraph break. Fix: split every model group at newlines before
+   anything else — no identifier spans a line break.
+3. *Third run: EMAIL 0.78, closer.* Root cause #3: the model labels
+   `darius.ashcombe@example.com` itself as a PATIENT name — because emails
+   literally contain patient names. Fix: a name/place span containing `@`
+   is dropped at the source (a person name never contains `@`).
+4. *GEO recall pinned at 0.52 regardless.* Not a model bug — a **gold
+   standard flaw**: the corpus planted street and city as two gold spans
+   where reality has one postal address, so the model's single correct
+   address span could only ever match half the gold. Fixed in the corpus
+   (single `{address}` span). Lesson: eval numbers can indict the gold, not
+   the system; 0.52 with precision 0.72 was the tell.
+
+After all four fixes: EMAIL back to 1.00, GEO relaxed recall 0.52 → 1.00,
+overall relaxed micro recall 1.00.
+
+**What it means for the roadmap:**
+- NER and LLM fail *differently* on the same categories: the LLM copies
+  name boundaries nearly perfectly (strict 0.93) but clips addresses
+  (3% fully covered); the token classifier covers whole addresses (73%)
+  but drags titles/credentials into name spans (strict 0.76).
+  Complementary failure modes, one metric pair to prove it.
+- With NER in stage 1, the LLM adds *nothing* on this corpus (0.944 →
+  0.944) at 43× the latency. Stage 2's justification now rests entirely on
+  narrative PHI and adjudication — which templates don't test and
+  MTSamples-injection will.
+- The LoRA fine-tune's target sharpened: not "GEO in general" but the two
+  residual boundary behaviors above.
+- Article hooks: "a 125M model beat a 14B model at the thing it was
+  trained for — 60× faster, on CPU"; "when your eval indicts your gold
+  standard"; "adding a detector must never make another detector worse."
+
+**Costs:** the `[ner]` extra pulls torch + transformers (~2.5 GB installed);
+the base install stays pure-Python (ADR 0001 holds). Model download ~500 MB
+on first use. All CPU: 184 ms/note, no GPU required.
+
 ## Caveats to state in any write-up
 
 - All numbers are on the *template* synthetic corpus — easy prose, labeled
   identifier contexts. The MTSamples-injection benchmark (authentic
   medical-transcription prose) is the next, harder test; expect every
   number above to drop.
-- 50-note cascade sample (LLM calls are ~seconds each); rerun at 500 before
-  publishing numbers.
+- 50-note cascade sample for LLM configs (calls are ~seconds each); rerun at
+  500 before publishing numbers. Stage-1 and NER configs are already at 500.
+- The corpus was rebuilt in step 5 (single-span addresses), so step-4 tables
+  measured on the older two-span gold are not directly comparable to
+  step-5 tables; the four-way table in step 5 is the apples-to-apples one.
 - Reproducibility of stage 2 is best-effort (fixed seed, temperature 0, but
   tied to model build + hardware).
 - No real PHI was used anywhere, at any step, including in the prompts sent

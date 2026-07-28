@@ -76,6 +76,10 @@ class Fabricator:
         state = self.rng.choice(_STATES)
         return f"{city}, {state} {self.rng.randint(10000, 99499)}"
 
+    def address(self) -> str:
+        """One full postal address — a single identifier, a single gold span."""
+        return f"{self.street_address()}, {self.city_state_zip()}"
+
     def date(self) -> str:
         d = date(self.rng.randint(2019, 2025), self.rng.randint(1, 12), self.rng.randint(1, 28))
         style = self.rng.randrange(4)

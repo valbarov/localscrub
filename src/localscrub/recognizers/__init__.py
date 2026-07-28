@@ -1,7 +1,7 @@
 """Stage-1 recognizers: regex + dictionary + checksum detection.
 
-NAME and GEO_SUBDIVISION are not regex-able and are handled by the optional
-NER extra / stage 2 — see ROADMAP.md.
+NAME and GEO_SUBDIVISION are not regex-able; install the ``[ner]`` extra and
+add ``NerRecognizer`` (or use stage 2) — see ROADMAP.md.
 """
 
 from localscrub.recognizers.base import Pattern, Recognizer, RegexRecognizer
@@ -10,6 +10,7 @@ from localscrub.recognizers.dates import AgeOver89Recognizer, DateRecognizer
 from localscrub.recognizers.financial import AccountNumberRecognizer, CreditCardRecognizer
 from localscrub.recognizers.government import SsnRecognizer
 from localscrub.recognizers.medical import HealthPlanIdRecognizer, MrnRecognizer
+from localscrub.recognizers.ner import NerRecognizer
 from localscrub.recognizers.network import IpAddressRecognizer, UrlRecognizer
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "HealthPlanIdRecognizer",
     "IpAddressRecognizer",
     "MrnRecognizer",
+    "NerRecognizer",
     "Pattern",
     "PhoneFaxRecognizer",
     "Recognizer",
@@ -32,7 +34,7 @@ __all__ = [
 
 
 def default_recognizers() -> tuple[Recognizer, ...]:
-    """The stage-1 recognizer set, one instance each."""
+    """The stage-1 recognizer set, one instance each (NER extra not included)."""
     return (
         EmailRecognizer(),
         PhoneFaxRecognizer(),
