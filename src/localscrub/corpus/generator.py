@@ -125,14 +125,21 @@ def _fabricate(key: str, fab: Fabricator, values: dict[str, str]) -> str:
     raise KeyError(f"no fabricator for entity slot {key!r}")
 
 
-def _render(template: NoteTemplate, fab: Fabricator) -> tuple[str, tuple[GoldSpan, ...]]:
-    values: dict[str, str] = {}
+def render_slots(
+    body: str, fab: Fabricator, values: dict[str, str]
+) -> tuple[str, tuple[GoldSpan, ...]]:
+    """Fill ``{slot}`` placeholders in ``body``, recording gold spans.
+
+    ``values`` memoizes fabricated identifiers; share one dict across
+    fragments to keep coreference (the same ``{patient}`` fills the same
+    name everywhere).
+    """
     parts: list[str] = []
     spans: list[GoldSpan] = []
     length = 0
     cursor = 0
-    for match in _SLOT.finditer(template.body):
-        literal = template.body[cursor : match.start()]
+    for match in _SLOT.finditer(body):
+        literal = body[cursor : match.start()]
         parts.append(literal)
         length += len(literal)
         slot = match.group(1)
@@ -143,7 +150,7 @@ def _render(template: NoteTemplate, fab: Fabricator) -> tuple[str, tuple[GoldSpa
             elif key in FILLER_BANKS:
                 values[slot] = fab.rng.choice(FILLER_BANKS[key])
             else:
-                raise KeyError(f"unknown slot {slot!r} in template {template.note_type!r}")
+                raise KeyError(f"unknown slot {slot!r}")
         value = values[slot]
         entity_type = ENTITY_SLOTS.get(key)
         if entity_type is not None:
@@ -151,8 +158,12 @@ def _render(template: NoteTemplate, fab: Fabricator) -> tuple[str, tuple[GoldSpa
         parts.append(value)
         length += len(value)
         cursor = match.end()
-    parts.append(template.body[cursor:])
+    parts.append(body[cursor:])
     return "".join(parts), tuple(spans)
+
+
+def _render(template: NoteTemplate, fab: Fabricator) -> tuple[str, tuple[GoldSpan, ...]]:
+    return render_slots(template.body, fab, {})
 
 
 def generate_corpus(
@@ -184,6 +195,7 @@ def generate_corpus(
 
 def write_jsonl(notes: Iterable[SyntheticNote], path: Path) -> None:
     """Write one JSON object per note; the eval harness's input format."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as fh:
         for note in notes:
             fh.write(json.dumps(note.to_dict(), ensure_ascii=False))

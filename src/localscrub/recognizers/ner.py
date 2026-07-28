@@ -39,6 +39,29 @@ _JOINABLE = re.compile(r"^[ ,\-–]{1,4}$")
 #: sentence punctuation the model drags into a span is never the identifier's
 _TRAILING_JUNK = re.compile(r"[\s.,;:]+$")
 
+#: character windows sized well under the model's 512-token limit
+_CHUNK_CHARS = 1500
+_CHUNK_OVERLAP = 200
+
+
+def _chunks(text: str) -> list[tuple[int, str]]:
+    """(offset, window) pairs covering ``text`` with overlap, split at spaces."""
+    if len(text) <= _CHUNK_CHARS:
+        return [(0, text)]
+    windows: list[tuple[int, str]] = []
+    start = 0
+    while start < len(text):
+        end = min(start + _CHUNK_CHARS, len(text))
+        if end < len(text):
+            space = text.rfind(" ", start + _CHUNK_CHARS // 2, end)
+            if space != -1:
+                end = space
+        windows.append((start, text[start:end]))
+        if end == len(text):
+            break
+        start = max(end - _CHUNK_OVERLAP, start + 1)
+    return windows
+
 
 class TokenClassifier(Protocol):
     """The slice of a transformers token-classification pipeline we use."""
@@ -78,24 +101,9 @@ class NerRecognizer:
 
     def analyze(self, text: str) -> list[Entity]:
         raw: list[tuple[EntityType, int, int, float]] = []
-        for item in self._pipeline(text):
-            entity_type = _LABEL_MAP.get(item.get("entity_group", ""))
-            if entity_type is None:
-                continue
-            start, end = int(item["start"]), int(item["end"])
-            score = float(item["score"])
-            # The pipeline can aggregate one label run across a paragraph
-            # break ("name@example.org.\n\nNext Name"); no identifier spans a
-            # line break, so split model groups at newlines first.
-            for line in re.finditer(r"[^\n]+", text[start:end]):
-                segment = _TRAILING_JUNK.sub("", line.group())
-                trimmed = segment.lstrip()
-                # A person or place never contains "@": that's the model
-                # labeling the human name inside an email address.
-                if not trimmed or "@" in trimmed:
-                    continue
-                line_start = start + line.start() + (len(segment) - len(trimmed))
-                raw.append((entity_type, line_start, line_start + len(trimmed), score))
+        seen: set[tuple[EntityType, int, int]] = set()
+        for chunk_offset, window in _chunks(text):
+            self._analyze_window(text, window, chunk_offset, raw, seen)
 
         raw.sort(key=lambda r: r[1])
         merged: list[tuple[EntityType, int, int, float]] = []
@@ -119,3 +127,34 @@ class NerRecognizer:
             )
             for etype, start, end, score in merged
         ]
+
+    def _analyze_window(
+        self,
+        text: str,
+        window: str,
+        chunk_offset: int,
+        raw: list[tuple[EntityType, int, int, float]],
+        seen: set[tuple[EntityType, int, int]],
+    ) -> None:
+        for item in self._pipeline(window):
+            entity_type = _LABEL_MAP.get(item.get("entity_group", ""))
+            if entity_type is None:
+                continue
+            start = chunk_offset + int(item["start"])
+            end = chunk_offset + int(item["end"])
+            score = float(item["score"])
+            # The pipeline can aggregate one label run across a paragraph
+            # break ("name@example.org.\n\nNext Name"); no identifier spans a
+            # line break, so split model groups at newlines first.
+            for line in re.finditer(r"[^\n]+", text[start:end]):
+                segment = _TRAILING_JUNK.sub("", line.group())
+                trimmed = segment.lstrip()
+                # A person or place never contains "@": that's the model
+                # labeling the human name inside an email address.
+                if not trimmed or "@" in trimmed:
+                    continue
+                line_start = start + line.start() + (len(segment) - len(trimmed))
+                record = (entity_type, line_start, line_start + len(trimmed))
+                if record not in seen:  # overlapping windows re-find spans
+                    seen.add(record)
+                    raw.append((*record, score))

@@ -18,6 +18,7 @@ from localscrub.analyzer import scrub as scrub_text
 from localscrub.config import ScrubConfig
 from localscrub.corpus import generate_corpus, read_jsonl, write_jsonl
 from localscrub.corpus.diversify import diversify_corpus
+from localscrub.corpus.mtsamples import build_benchmark, fetch
 from localscrub.evaluation import evaluate
 from localscrub.llm import DEFAULT_HOST, DEFAULT_MODEL, OllamaClient, OllamaError
 from localscrub.recognizers import NerRecognizer, Recognizer, default_recognizers
@@ -222,6 +223,65 @@ def synth(
     else:
         # ensure_ascii guards against non-UTF-8 console encodings on Windows;
         # --out writes real UTF-8 instead.
+        for note in notes:
+            typer.echo(json.dumps(note.to_dict(), ensure_ascii=True))
+
+
+@app.command()
+def mtsamples(
+    csv_path: Annotated[
+        Path,
+        typer.Option("--csv", help="Path to the MTSamples CSV."),
+    ] = Path("data/mtsamples/mtsamples.csv"),
+    count: Annotated[
+        int,
+        typer.Option("--count", "-n", min=1, help="Number of benchmark notes."),
+    ] = 100,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="RNG seed; same CSV + seed, same benchmark."),
+    ] = 0,
+    injections: Annotated[
+        int,
+        typer.Option("--injections", min=0, help="Narrative PHI injections per note."),
+    ] = 4,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", "-o", help="Write JSONL here instead of stdout."),
+    ] = None,
+    do_fetch: Annotated[
+        bool,
+        typer.Option("--fetch", help="Download the public CSV first if it is missing."),
+    ] = False,
+) -> None:
+    """Build the MTSamples-injection benchmark (JSONL with exact gold spans).
+
+    Synthetic identifiers are injected into authentic public
+    medical-transcription prose at known offsets — narrative sentences, no
+    labels. Score it with `localscrub eval`.
+    """
+    try:
+        if do_fetch:
+            fetch(csv_path)
+        elif not csv_path.exists():
+            typer.secho(
+                f"{csv_path} not found; pass --fetch to download the public MTSamples CSV",
+                err=True,
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+        notes = build_benchmark(csv_path, count, seed=seed, injections=injections)
+    except (OSError, ValueError) as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+
+    if out is not None:
+        try:
+            write_jsonl(notes, out)
+        except OSError as exc:
+            typer.secho(f"cannot write {out}: {exc}", err=True, fg=typer.colors.RED)
+            raise typer.Exit(1) from exc
+    else:
         for note in notes:
             typer.echo(json.dumps(note.to_dict(), ensure_ascii=True))
 

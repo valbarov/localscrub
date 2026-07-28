@@ -190,14 +190,67 @@ overall relaxed micro recall 1.00.
 the base install stays pure-Python (ADR 0001 holds). Model download ~500 MB
 on first use. All CPU: 184 ms/note, no GPU required.
 
+## Step 6 — MTSamples-injection benchmark: the test that lets stage 2 earn its keep
+
+**What:** Synthetic identifiers injected into ~5000 public
+medical-transcription samples (mtsamples.com via a pinned-checksum mirror;
+downloaded, never redistributed). Injections are *unlabeled narrative
+sentences* ("The patient resides at 9302 Mossbank Rd, Quarry Bend, NM
+61856.") woven between real sentences at deterministic positions, plus a
+small demographics header. Same JSONL gold format, same `localscrub eval`.
+`localscrub mtsamples --fetch -n 100 --seed 42`. Benchmark parameters
+stated, not silent: transcripts 500–3500 chars, 4 injections/note.
+
+**The methodological point worth an article section:** on an injection
+benchmark, *recall is exact but precision is only a lower bound* — the
+public prose contains its own date-like and name-like strings ("Dr. X"
+placeholders, real dates, drug dosages), so a detector flagging them is
+penalized for being right. Redaction recall is the number to trust here.
+
+**Results:**
+
+| config | notes | relaxed R | redaction recall | latency/note |
+|---|---|---|---|---|
+| stage 1 | 100 | 0.62 | 0.62 | µs, CPU |
+| + NER | 100 | 1.00 | 0.999 | 652 ms, CPU |
+| + LLM | 30 | 1.00 | 0.976 | 6.0 s, GPU |
+| + NER + LLM | 30 | 1.00 | **1.000** | 6.8 s, GPU |
+
+**What it means:**
+- **The cascade thesis survives contact with real prose.** On templates,
+  NER made the LLM redundant; on authentic narrative, the combination is
+  what reaches 1.000 — the LLM still clips addresses (GEO fully redacted
+  0.29 alone) and NER still covers them, so the additive merge composes
+  complementary detectors exactly as designed.
+- NAME boundaries are *cleaner* in narrative (NER strict recall 1.00 here
+  vs 0.79 on templates) — signature blocks ("Dictated by X, MD"), not
+  narrative mentions, are the hard boundary case.
+- Real prose stress-tested the engineering, not just the models. Three
+  fixes came out of this step: NER chunking for >512-token documents
+  (overlapping 1500-char windows), `num_ctx` 8192 for stage 2 (Ollama's
+  4096 default would silently truncate long notes), and a `num_predict`
+  cap + salvage parser after one uncapped schema-constrained generation
+  looped past a 10-minute timeout. Truncated extraction lists are now
+  parsed to the last complete item instead of crashing — each item is
+  independently verified against the source text, so a lost tail is the
+  same failure class as a model miss.
+- Costs: NER 652 ms/note on these longer documents (vs 185 ms on
+  templates); LLM ~6 s/note once capped.
+- Article hooks: "recall is exact, precision is a lower bound — the
+  injection-benchmark trade"; "the LLM was redundant until the prose got
+  real"; "your benchmark should break your plumbing before it breaks your
+  model."
+
 ## Caveats to state in any write-up
 
-- All numbers are on the *template* synthetic corpus — easy prose, labeled
-  identifier contexts. The MTSamples-injection benchmark (authentic
-  medical-transcription prose) is the next, harder test; expect every
-  number above to drop.
-- 50-note cascade sample for LLM configs (calls are ~seconds each); rerun at
-  500 before publishing numbers. Stage-1 and NER configs are already at 500.
+- Steps 1–5 numbers are on the *template* synthetic corpus — easy prose,
+  labeled identifier contexts. Step 6 (MTSamples) is the authentic-prose
+  test; the injected-identifier numbers held up, but real i2b2-style
+  evaluation (naturally occurring PHI, not injected) remains out of reach
+  until the corpus becomes obtainable.
+- LLM configs sampled at 30–50 notes (calls are ~seconds each); rerun at
+  the full sizes before publishing numbers. Stage-1 and NER configs are at
+  100–500 notes.
 - The corpus was rebuilt in step 5 (single-span addresses), so step-4 tables
   measured on the older two-span gold are not directly comparable to
   step-5 tables; the four-way table in step 5 is the apples-to-apples one.

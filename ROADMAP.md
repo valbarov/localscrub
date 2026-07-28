@@ -52,8 +52,10 @@ Model backend is pluggable:
 - [x] Synthetic corpus generator (fake clinical notes with planted entities, scored ground
       truth): `localscrub synth` emits JSONL with exact gold spans; optional `--diversify`
       paraphrases prose with a local Ollama model, fail-closed on span damage
-- [ ] MTSamples-injection benchmark: synthetic PHI planted at known positions in public
-      medical-transcription samples → authentic prose, perfect ground truth, fully reproducible
+- [x] MTSamples-injection benchmark: synthetic PHI planted at known positions in public
+      medical-transcription samples → authentic prose, perfect ground truth, fully
+      reproducible (`localscrub mtsamples --fetch`; CSV pinned by SHA-256, never
+      redistributed; recall is exact, precision a lower bound — see docs/results.md)
 - [ ] i2b2/n2c2 2014 de-identification corpus for literature-comparable numbers
       (currently unavailable upstream; evaluation-only when obtainable, never redistributed)
 - [x] Ollama backend: verbatim-snippet extraction + escalation adjudication, additive

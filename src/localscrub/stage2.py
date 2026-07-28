@@ -19,6 +19,7 @@ The stage-2 contract is additive and fail-closed:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 
 from localscrub.analyzer import Escalation
@@ -75,6 +76,38 @@ identifier, simply leave it out:
 """
 
 
+def _parse_reply(reply: str) -> list[object]:
+    """The reply's ``entities`` list; salvage complete items if truncated.
+
+    ``num_predict`` bounds runaway decoding, so a very long extraction list
+    can arrive cut mid-object. Every complete item is still usable — each is
+    independently verified against the source text — so parse the longest
+    well-formed prefix rather than discarding the note. A reply with no
+    parseable prefix is still an error.
+    """
+    try:
+        data = json.loads(reply)
+    except ValueError:
+        closers = [m.end() for m in re.finditer(r"\}", reply)]
+        for end in reversed(closers[-64:]):
+            try:
+                data = json.loads(reply[:end] + "]}")
+            except ValueError:
+                continue
+            break
+        else:
+            raise OllamaError(
+                f"stage-2 reply is not schema-shaped: {reply[:200]!r}"
+            ) from None
+    try:
+        items = data["entities"]
+    except (KeyError, TypeError) as exc:
+        raise OllamaError(f"stage-2 reply has no entity list: {reply[:200]!r}") from exc
+    if not isinstance(items, list):
+        raise OllamaError(f"stage-2 reply has no entity list: {reply[:200]!r}")
+    return items
+
+
 class LlmExtractor:
     """Extracts context-dependent PHI with a local LLM backend."""
 
@@ -84,10 +117,17 @@ class LlmExtractor:
         *,
         confidence: float = 0.85,
         seed: int = 0,
+        num_ctx: int = 8192,
     ) -> None:
         self.client = client if client is not None else OllamaClient()
         self.confidence = confidence
         self.seed = seed
+        # Ollama defaults to a 4096-token window; long documents (e.g. the
+        # MTSamples benchmark) would be silently truncated at that size.
+        self.num_ctx = num_ctx
+        # Bounds runaway schema-constrained decoding (it can loop until the
+        # request timeout). Truncated replies are salvaged item by item.
+        self.num_predict = 4096
 
     def extract(
         self, text: str, escalations: Sequence[Escalation] = ()
@@ -98,11 +138,10 @@ class LlmExtractor:
             schema=_SCHEMA,
             seed=self.seed,
             temperature=0.0,
+            num_ctx=self.num_ctx,
+            num_predict=self.num_predict,
         )
-        try:
-            items = json.loads(reply)["entities"]
-        except (ValueError, KeyError, TypeError) as exc:
-            raise OllamaError(f"stage-2 reply is not schema-shaped: {reply[:200]!r}") from exc
+        items = _parse_reply(reply)
 
         candidates: list[Entity] = []
         for item in items:

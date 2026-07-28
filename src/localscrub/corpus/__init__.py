@@ -21,6 +21,7 @@ from localscrub.corpus.generator import (
     read_jsonl,
     write_jsonl,
 )
+from localscrub.corpus.mtsamples import build_benchmark
 from localscrub.corpus.templates import NOTE_TYPES, TEMPLATES, NoteTemplate
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "GoldSpan",
     "NoteTemplate",
     "SyntheticNote",
+    "build_benchmark",
     "generate_corpus",
     "read_jsonl",
     "write_jsonl",

@@ -61,6 +61,24 @@ def test_extractor_raises_on_malformed_reply():
         LlmExtractor(FakeClient("not json")).extract(NOTE)
 
 
+def test_truncated_reply_salvages_complete_items():
+    # num_predict can cut a long extraction list mid-object; every complete
+    # item before the cut must survive.
+    truncated = (
+        '{\n  "entities": [\n'
+        '    {"type": "NAME", "text": "Alma Quimby"},\n'
+        '    {"type": "NAME", "text": "Otto Fenwick"},\n'
+        '    {"type": "GEO_SUBDIVISION", "text": "Cedar Va'
+    )
+    entities = LlmExtractor(FakeClient(truncated)).extract(NOTE)
+    assert sorted({e.text for e in entities}) == ["Alma Quimby", "Otto Fenwick"]
+
+
+def test_truncated_reply_with_no_complete_item_raises():
+    with pytest.raises(OllamaError, match="schema-shaped"):
+        LlmExtractor(FakeClient('{"entities": [{"type": "NAME", "te')).extract(NOTE)
+
+
 def test_full_face_photo_excluded_from_stage2_types():
     assert EntityType.FULL_FACE_PHOTO not in STAGE2_TYPES
 

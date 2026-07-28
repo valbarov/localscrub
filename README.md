@@ -32,6 +32,7 @@ localscrub scrub notes.txt --ner                # + pretrained clinical NER (CPU
 
 localscrub synth -n 500 --seed 42 -o data/corpora/dev.jsonl   # synthetic eval corpus
 localscrub synth -n 500 --seed 42 --diversify -o dev.jsonl    # + local-LLM paraphrase (Ollama)
+localscrub mtsamples --fetch -n 100 --seed 42 -o mts.jsonl    # injection benchmark: real prose
 localscrub eval data/corpora/dev.jsonl                        # per-entity precision/recall
 ```
 

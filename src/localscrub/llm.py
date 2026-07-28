@@ -40,6 +40,8 @@ class OllamaClient:
         seed: int | None = None,
         temperature: float | None = None,
         think: bool = False,
+        num_ctx: int | None = None,
+        num_predict: int | None = None,
     ) -> str:
         """Return the model's completion; ``schema`` forces JSON output."""
         payload: dict[str, object] = {
@@ -53,6 +55,10 @@ class OllamaClient:
             options["seed"] = seed
         if temperature is not None:
             options["temperature"] = temperature
+        if num_ctx is not None:
+            options["num_ctx"] = num_ctx
+        if num_predict is not None:
+            options["num_predict"] = num_predict
         if options:
             payload["options"] = options
         if schema is not None:

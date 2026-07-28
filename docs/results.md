@@ -56,15 +56,43 @@ Redaction recall **0.66 → 0.94**.
 | stage 1 + LLM | **0.97** | 0.86 | 0.933 | **0.93** | 0.03 | 11.4 s (GPU) |
 | stage 1 + NER + LLM | 0.96 | 0.86 | **0.944** | 0.76 | **0.73** | ~8 s (GPU) |
 
+## MTSamples-injection benchmark (authentic prose)
+
+Synthetic identifiers injected into public medical-transcription prose as
+unlabeled narrative sentences (`localscrub mtsamples --fetch -n 100 --seed 42`,
+transcripts 500–3500 chars, 4 injections/note plus a demographics header).
+Recall here is exact; **precision is only a lower bound** — the public
+transcripts contain their own date- and name-like strings (drug dosages,
+"Dr. X" placeholders, real dates in prose) that are not in the injected gold,
+so a detector that flags them is penalized for being right.
+
+| config | notes | gold | relaxed R | relaxed P† | redaction recall | latency/note |
+|---|---|---|---|---|---|---|
+| stage 1 | 100 | 697 | 0.62 | 0.94 | 0.62 | µs (CPU) |
+| stage 1 + NER | 100 | 697 | **1.00** | 0.81 | **0.999** | 652 ms (CPU) |
+| stage 1 + LLM | 30 | 210 | **1.00** | 0.89 | 0.976 | 6.0 s (GPU) |
+| stage 1 + NER + LLM | 30 | 210 | **1.00** | 0.80 | **1.000** | 6.8 s (GPU) |
+
+† lower bound, see above.
+
+Per-type highlights (NER config, 100 notes): NAME relaxed recall 1.00
+(strict 1.00 — narrative name boundaries are *cleaner* than template
+signature blocks); GEO 1.00 relaxed / 0.96 fully redacted; every injected
+identifier type ≥ 0.96 fully redacted. The LLM-only config repeats its
+address-clipping weakness (GEO fully redacted 0.29); the combined cascade
+fixes it (1.00) — on this benchmark the two models are complementary rather
+than redundant, unlike on the template corpus.
+
 ## Reading these numbers honestly
 
 - **The NER extra answers the "pretrained model vs fine-tune" question for
-  this corpus**: a 125M-parameter token classifier trained on the i2b2 de-id
-  task gets the same relaxed F1 and *better* full-span address coverage than
-  a 14B generative model, 60× faster, on CPU. Adding the LLM on top of NER
-  buys nothing here (0.944 → 0.944) — its value has to come from what
-  templates don't test: narrative PHI and escalation adjudication. That is
-  what the MTSamples benchmark exists to measure.
+  the template corpus**: a 125M-parameter token classifier trained on the
+  i2b2 de-id task gets the same relaxed F1 and *better* full-span address
+  coverage than a 14B generative model, 60× faster, on CPU. Adding the LLM
+  on top of NER buys nothing on templates (0.944 → 0.944) — but on the
+  MTSamples benchmark the combination is what reaches 1.000 redaction
+  recall, so stage 2 earns its latency exactly where the roadmap predicted:
+  authentic narrative prose.
 - **NER and LLM fail differently on the same categories.** The LLM copies
   name boundaries nearly perfectly (NAME strict 0.93) but clips addresses
   catastrophically (3% fully redacted); the token classifier covers whole

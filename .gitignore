@@ -11,6 +11,8 @@ build/
 # Models & data — never commit weights or corpora
 models/
 data/corpora/
+# MTSamples is public but downloaded, not redistributed
+data/mtsamples/
 *.gguf
 *.safetensors
 
