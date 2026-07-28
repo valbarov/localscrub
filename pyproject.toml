@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "localscrub"
+version = "0.0.1.dev0"
+description = "Local-first PHI/PII de-identification: rule/NER cascade + local LLM. Your data never leaves your machine."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Vadim Albarov", email = "albarov.vadim@gmail.com" }]
+keywords = [
+  "phi",
+  "pii",
+  "deidentification",
+  "de-identification",
+  "hipaa",
+  "redaction",
+  "privacy",
+  "local-llm",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Healthcare Industry",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+  "Topic :: Text Processing :: Filters",
+]
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/localscrub"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
