@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Models & data — never commit weights or corpora
+models/
+data/corpora/
+*.gguf
+*.safetensors
+
+# i2b2/n2c2 licensed data must NEVER enter the repo
+data/i2b2/
+data/n2c2/
+
+# Local
+.env
+.idea/
+.vscode/
