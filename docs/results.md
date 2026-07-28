@@ -1,10 +1,11 @@
 # Evaluation results
 
-Stage 1 (rules only) against the synthetic corpus. Reproduce with:
+Against the synthetic corpus. Reproduce with:
 
 ```bash
 localscrub synth -n 500 --seed 42 -o data/corpora/eval.jsonl
-localscrub eval data/corpora/eval.jsonl
+localscrub eval data/corpora/eval.jsonl          # stage 1 only
+localscrub eval data/corpora/eval.jsonl --llm    # full cascade (local Ollama)
 ```
 
 **relaxed** = type match + character overlap (detection). **strict** = type
@@ -33,12 +34,32 @@ escalations — the safety number.
 
 Overall: 500 notes, 5298 gold spans, redaction recall **0.62**.
 
+## Cascade: stage 1 + stage 2 (qwen3:14b), template corpus (50 notes, seed 42)
+
+Smaller run — stage 2 is one model call per note. Stage-1 rows that stay at
+1.00 are elided; what changes:
+
+| entity | gold | relaxed P | relaxed R | relaxed F1 | strict P | strict R | strict F1 | redacted |
+|---|---|---|---|---|---|---|---|---|
+| NAME | 142 | 0.99 | 0.98 | 0.99 | 0.94 | 0.92 | 0.93 | 0.98 |
+| GEO_SUBDIVISION | 60 | 0.62 | 0.53 | 0.57 | 0.04 | 0.03 | 0.04 | 0.12 |
+| ACCOUNT_NUMBER | 8 | 0.89 | 1.00 | 0.94 | 0.89 | 1.00 | 0.94 | 1.00 |
+| **all (micro)** | 526 | 0.95 | 0.94 | 0.95 | 0.84 | 0.83 | 0.84 | 0.89 |
+
+Overall: redaction recall **0.62 → 0.89**, relaxed micro F1 **0.76 → 0.95**.
+
 ## Reading these numbers honestly
 
-- **NAME and GEO_SUBDIVISION are 0 by design, not by accident.** Stage 1 has
-  no recognizer for them (ADR 0001); they are the reason stage 2 and the
-  `[ner]` extra exist. They dominate the micro average — that 0.62 overall
-  redaction recall *is* the headline gap stage 2 must close.
+- **Stage-1 NAME and GEO_SUBDIVISION are 0 by design, not by accident.**
+  Stage 1 has no recognizer for them (ADR 0001); they are the reason stage 2
+  and the `[ner]` extra exist. The cascade closes most of the NAME gap
+  (0.98 relaxed recall) but **GEO is the open problem**: the model finds
+  cities yet clips street numbers and ZIPs, so barely 12% of geo spans are
+  *fully* redacted. This is the first target for the LoRA fine-tune.
+- **Stage-2 precision costs are small but real**: the micro relaxed
+  precision drop (1.00 → 0.95) is the LLM occasionally typing a plan ID as
+  an account number or flagging non-PHI prose. Stage-1 detections are never
+  affected (the merge is additive; ADR 0002).
 - **URL strict = 0.00** exposes a real boundary bug: `UrlRecognizer` swallows
   sentence-final punctuation (`…/x.` including the period), so every URL hit
   is overlap-correct but boundary-wrong. Tracked for a recognizer fix.

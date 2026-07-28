@@ -22,7 +22,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from localscrub.analyzer import Analyzer
+from localscrub.analyzer import Analyzer, Stage2, apply_stage2
 from localscrub.config import ScrubConfig
 from localscrub.corpus.generator import GoldSpan, SyntheticNote
 from localscrub.entities import EntityType
@@ -162,8 +162,12 @@ def _covered(span: GoldSpan, intervals: list[tuple[int, int]]) -> bool:
     return pos >= span.end
 
 
-def evaluate(notes: Sequence[SyntheticNote], config: ScrubConfig | None = None) -> EvalReport:
-    """Run the analyzer over gold-labeled notes and score it."""
+def evaluate(
+    notes: Sequence[SyntheticNote],
+    config: ScrubConfig | None = None,
+    stage2: Stage2 | None = None,
+) -> EvalReport:
+    """Run the analyzer (optionally cascading into stage 2) and score it."""
     cfg = config if config is not None else ScrubConfig()
     analyzer = Analyzer(config=cfg)
     gold_by_type: dict[EntityType, int] = defaultdict(int)
@@ -175,6 +179,8 @@ def evaluate(notes: Sequence[SyntheticNote], config: ScrubConfig | None = None) 
 
     for note in notes:
         result = analyzer.analyze(note.text)
+        if stage2 is not None:
+            result = apply_stage2(result, stage2, cfg)
         for span in note.spans:
             gold_by_type[span.type] += 1
 

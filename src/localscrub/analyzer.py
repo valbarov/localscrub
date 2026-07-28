@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from localscrub.config import ScrubConfig
 from localscrub.entities import Entity
@@ -117,6 +118,55 @@ class Analyzer:
         )
 
 
-def scrub(text: str, config: ScrubConfig | None = None) -> ScrubResult:
-    """Scrub ``text`` with the default recognizer set."""
-    return Analyzer(config=config).analyze(text)
+class Stage2(Protocol):
+    """Anything that can extract context-dependent PHI from a document."""
+
+    def extract(self, text: str, escalations: Sequence[Escalation]) -> Sequence[Entity]: ...
+
+
+def apply_stage2(
+    result: ScrubResult, stage2: Stage2, config: ScrubConfig | None = None
+) -> ScrubResult:
+    """Merge a stage-2 pass into a stage-1 result (additive, fail-closed).
+
+    Stage-2 entities that overlap a stage-1 detection are dropped — rules
+    are better calibrated where rules apply. Escalations the model confirmed
+    (any extraction overlaps them) are resolved; the rest stay escalated:
+    stage-2 silence never unredacts anything (ADR 0002).
+    """
+    cfg = config if config is not None else ScrubConfig()
+    extracted = tuple(stage2.extract(result.text, result.escalations))
+    if not extracted:
+        return result
+
+    added = [
+        e
+        for e in extracted
+        if not any(e.start < a.end and a.start < e.end for a in result.entities)
+    ]
+    entities = sorted([*result.entities, *added], key=lambda e: e.start)
+    remaining = tuple(
+        esc
+        for esc in result.escalations
+        if not any(esc.start < e.end and e.start < esc.end for e in extracted)
+    )
+    redacted, placeholders = apply_redactions(
+        result.text, entities, numbered=cfg.numbered_placeholders
+    )
+    return ScrubResult(
+        text=result.text,
+        redacted=redacted,
+        entities=tuple(entities),
+        escalations=remaining,
+        placeholders=placeholders,
+    )
+
+
+def scrub(
+    text: str, config: ScrubConfig | None = None, stage2: Stage2 | None = None
+) -> ScrubResult:
+    """Scrub ``text`` with the default recognizer set, optionally cascading."""
+    result = Analyzer(config=config).analyze(text)
+    if stage2 is not None:
+        result = apply_stage2(result, stage2, config)
+    return result

@@ -17,9 +17,11 @@ import typer
 from localscrub.analyzer import scrub as scrub_text
 from localscrub.config import ScrubConfig
 from localscrub.corpus import generate_corpus, read_jsonl, write_jsonl
-from localscrub.corpus.diversify import DEFAULT_HOST, DEFAULT_MODEL, OllamaError, diversify_corpus
+from localscrub.corpus.diversify import diversify_corpus
 from localscrub.evaluation import evaluate
+from localscrub.llm import DEFAULT_HOST, DEFAULT_MODEL, OllamaClient, OllamaError
 from localscrub.report import build_report, write_audit
+from localscrub.stage2 import LlmExtractor
 
 app = typer.Typer(name="localscrub", no_args_is_help=True)
 
@@ -81,11 +83,32 @@ def scrub(
         bool,
         typer.Option("--fail-on-detect", help="Exit 3 if anything was detected or escalated."),
     ] = False,
+    llm: Annotated[
+        bool,
+        typer.Option(
+            "--llm",
+            help="Run stage 2: a local Ollama model extracts context-dependent PHI "
+            "(names, places, narrative identifiers) and adjudicates escalations.",
+        ),
+    ] = False,
+    model: Annotated[
+        str,
+        typer.Option("--model", help="Ollama model for --llm."),
+    ] = DEFAULT_MODEL,
+    ollama_host: Annotated[
+        str,
+        typer.Option("--ollama-host", help="Ollama server for --llm."),
+    ] = DEFAULT_HOST,
 ) -> None:
     """Scrub PHI/PII from a text file: redacted text + JSON entity report."""
     text, source = _read_input(path)
     config = ScrubConfig(accept_threshold=threshold)
-    result = scrub_text(text, config)
+    stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
+    try:
+        result = scrub_text(text, config, stage2=stage2)
+    except OllamaError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
     report_data = build_report(result, source=source)
 
     if report is not None:
@@ -197,6 +220,18 @@ def eval_corpus(
         float,
         typer.Option("--threshold", min=0.0, max=1.0, help="Accept threshold (default 0.8)."),
     ] = 0.8,
+    llm: Annotated[
+        bool,
+        typer.Option("--llm", help="Score the full cascade: stage 1 + stage-2 Ollama pass."),
+    ] = False,
+    model: Annotated[
+        str,
+        typer.Option("--model", help="Ollama model for --llm."),
+    ] = DEFAULT_MODEL,
+    ollama_host: Annotated[
+        str,
+        typer.Option("--ollama-host", help="Ollama server for --llm."),
+    ] = DEFAULT_HOST,
 ) -> None:
     """Score the analyzer against a gold corpus: per-entity precision/recall.
 
@@ -213,7 +248,14 @@ def eval_corpus(
         typer.secho(f"corpus {corpus} is empty", err=True, fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    report = evaluate(notes, config=ScrubConfig(accept_threshold=threshold))
+    stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
+    try:
+        report = evaluate(
+            notes, config=ScrubConfig(accept_threshold=threshold), stage2=stage2
+        )
+    except OllamaError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
     if json_out:
         typer.echo(json.dumps(report.to_dict(), indent=2))
     else:

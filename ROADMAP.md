@@ -54,7 +54,9 @@ Model backend is pluggable:
       medical-transcription samples → authentic prose, perfect ground truth, fully reproducible
 - [ ] i2b2/n2c2 2014 de-identification corpus for literature-comparable numbers
       (currently unavailable upstream; evaluation-only when obtainable, never redistributed)
-- [ ] Ollama backend: structured extraction on escalated spans
+- [x] Ollama backend: verbatim-snippet extraction + escalation adjudication, additive
+      fail-closed merge ([ADR 0002](docs/decisions/0002-stage2-llm-interface.md));
+      `localscrub scrub --llm`, `localscrub eval --llm`
 - [x] Eval harness: per-entity precision/recall on every change (regression floors in
       `tests/test_evaluation.py`); results table in [docs/results.md](docs/results.md)
 - [ ] LoRA fine-tune recipe on synthetic data, with before/after numbers

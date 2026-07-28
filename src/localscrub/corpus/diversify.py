@@ -22,17 +22,12 @@ Ollama, which repeats output for the same model build and hardware.
 
 from __future__ import annotations
 
-import json
 import re
-import urllib.error
-import urllib.request
 from collections.abc import Callable, Sequence
 
 from localscrub.analyzer import Analyzer
 from localscrub.corpus.generator import GoldSpan, SyntheticNote
-
-DEFAULT_MODEL = "qwen3:14b"
-DEFAULT_HOST = "http://localhost:11434"
+from localscrub.llm import DEFAULT_HOST, DEFAULT_MODEL, OllamaClient
 
 _SENTINEL_RE = re.compile(r"\[\[E(\d+)\]\]")
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -54,34 +49,6 @@ Hard rules:
 Note:
 {note}
 """
-
-
-class OllamaError(RuntimeError):
-    """The Ollama server could not be reached or returned garbage."""
-
-
-def _ollama_generate(prompt: str, *, model: str, host: str, seed: int, timeout: float) -> str:
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "think": False,
-        "options": {"seed": seed, "temperature": 0.7},
-    }
-    request = urllib.request.Request(
-        f"{host}/api/generate",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.load(response)
-    except (OSError, urllib.error.URLError, ValueError) as exc:
-        raise OllamaError(f"Ollama request to {host} failed: {exc}") from exc
-    reply = data.get("response")
-    if not isinstance(reply, str):
-        raise OllamaError(f"unexpected Ollama response shape: {list(data)}")
-    return reply
 
 
 def _mask(note: SyntheticNote) -> str:
@@ -151,11 +118,10 @@ def diversify_corpus(
     validation. ``generate(prompt, note_seed)`` may be injected for testing.
     """
     if generate is None:
+        client = OllamaClient(model=model, host=host, timeout=timeout)
 
         def generate(prompt: str, note_seed: int) -> str:
-            return _ollama_generate(
-                prompt, model=model, host=host, seed=note_seed, timeout=timeout
-            )
+            return client.generate(prompt, seed=note_seed, temperature=0.7)
 
     analyzer = Analyzer()
     out: list[SyntheticNote] = []
