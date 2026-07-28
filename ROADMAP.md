@@ -35,11 +35,16 @@ Model backend is pluggable:
 - [x] Package layout, `pyproject.toml`, CI (ruff + pytest), Apache-2.0 license
 - [x] Entity taxonomy: the 18 HIPAA Safe Harbor categories + generic PII set
 
-### M1 — stage 1: rules & NER
-- [ ] Presidio vs. plain-spaCy spike → pick the stage-1 engine
-- [ ] Regex + dictionary recognizers for structured identifiers (SSN, MRN, phone, email, dates)
-- [ ] Ambiguity scoring: what escalates to stage 2 (confidence thresholds + heuristics)
-- [ ] CLI: `localscrub scrub file.txt` → redacted text + JSON entity report
+### M1 — stage 1: rules & NER ✅
+- [x] Stage-1 engine decision → in-house recognizers, no Presidio dependency
+      ([ADR 0001](docs/decisions/0001-stage1-engine.md))
+- [x] Regex + dictionary recognizers for structured identifiers
+      (SSN, MRN, phone/fax, email, dates/ages, URL, IP, credit card, accounts)
+- [x] Ambiguity scoring: confidence bands + overlap adjudication; uncertain spans
+      are redacted fail-closed and escalated to stage 2
+- [x] CLI: `localscrub scrub file.txt` → redacted text + JSON entity report
+      (+ `--report-only`, `--fail-on-detect`, JSONL audit log)
+- [ ] Optional `[ner]` extra: spaCy NAME/GEO recognizer (may land with M2)
 
 ### M2 — stage 2: local LLM + evaluation
 - [ ] Synthetic corpus generator (fake clinical notes with planted entities, scored ground truth)

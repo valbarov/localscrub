@@ -19,12 +19,32 @@ Existing options force a bad trade:
 localscrub runs a two-stage cascade entirely on your hardware: cheap detection for
 the 90%+, a small fine-tuned local model for the ambiguous rest.
 
-## Planned interface
+## Usage
 
 ```bash
-localscrub scrub notes.txt            # redacted text + JSON entity report
-localscrub scrub --report-only logs/  # detect without rewriting
+localscrub scrub notes.txt                      # print redacted text
+localscrub scrub notes.txt --json               # print the JSON entity report
+localscrub scrub notes.txt -o clean.txt --report report.json
+localscrub scrub --report-only < notes.txt      # detect without rewriting
+localscrub scrub notes.txt --fail-on-detect     # CI gate: exit 3 if anything found
 ```
+
+Or from Python:
+
+```python
+from localscrub import scrub
+
+result = scrub("Reach the patient at test@example.com.")
+result.redacted      # 'Reach the patient at [EMAIL_1].'
+result.entities      # (Entity(type=EMAIL, start=21, end=37, confidence=0.95, ...),)
+result.escalations   # spans stage 1 couldn't settle — stage 2's work queue
+```
+
+Stage 1 (rules) currently detects: emails, phone/fax numbers, SSNs, credit
+cards (Luhn-validated), IP addresses, URLs, dates and ages over 89, and
+labeled MRN / health-plan / account identifiers. Uncertain or ambiguous spans
+are redacted fail-closed *and* flagged for stage-2 adjudication. Person and
+place names require the NER extra / stage 2 — not yet released.
 
 ## Entity coverage
 
