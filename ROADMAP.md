@@ -71,7 +71,7 @@ Model backend is pluggable:
 - [x] Quickstart docs ([docs/quickstart.md](docs/quickstart.md)), honest accuracy
       table ([docs/results.md](docs/results.md)), threat-model / trust-boundary
       doc ([docs/threat-model.md](docs/threat-model.md))
-- [ ] PyPI release
+- [x] PyPI release — [pypi.org/project/localscrub](https://pypi.org/project/localscrub/), v0.1.0
 - [ ] Published benchmark: localscrub vs. rules-only vs. cloud APIs
       (accuracy, latency, cost, and where your data goes) — Presidio baseline
       done ([docs/benchmark.md](docs/benchmark.md), `scripts/bench_presidio.py`,
