@@ -48,7 +48,7 @@ Model backend is pluggable:
       (`obi/deid_roberta_i2b2`, CPU; landed with M2 — chosen over plain spaCy because
       it is trained on the i2b2 de-id task itself)
 
-### M2 — stage 2: local LLM + evaluation
+### M2 — stage 2: local LLM + evaluation ✅ (i2b2 item pending upstream availability)
 - [x] Synthetic corpus generator (fake clinical notes with planted entities, scored ground
       truth): `localscrub synth` emits JSONL with exact gold spans; optional `--diversify`
       paraphrases prose with a local Ollama model, fail-closed on span damage
@@ -63,7 +63,9 @@ Model backend is pluggable:
       `localscrub scrub --llm`, `localscrub eval --llm`
 - [x] Eval harness: per-entity precision/recall on every change (regression floors in
       `tests/test_evaluation.py`); results table in [docs/results.md](docs/results.md)
-- [ ] LoRA fine-tune recipe on synthetic data, with before/after numbers
+- [x] LoRA fine-tune recipe on synthetic data, with before/after numbers
+      ([docs/finetune.md](docs/finetune.md)): base 1.7B unparseable on 35/35 notes →
+      tuned 0/80, MTSamples redaction recall 0.61 → 0.92
 
 ### M3 — v0.1
 - [ ] Quickstart docs, honest accuracy table, threat-model / trust-boundary doc

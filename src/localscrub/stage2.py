@@ -76,6 +76,23 @@ identifier, simply leave it out:
 """
 
 
+def extraction_prompt(text: str, escalations: Sequence[Escalation] = ()) -> str:
+    """The stage-2 prompt for ``text`` — also the SFT training prompt.
+
+    Fine-tuning trains on exactly what inference sends (including stage-1
+    escalation hints), so the tuned model never sees a distribution shift.
+    """
+    flagged = ""
+    if escalations:
+        spans = "\n".join(
+            f'- "{esc.text}" (chars {esc.start}-{esc.end}, reason: {esc.reason})'
+            for esc in escalations
+        )
+        flagged = _FLAGGED.format(spans=spans)
+    types = ", ".join(t.value for t in STAGE2_TYPES)
+    return _PROMPT.format(types=types, flagged=flagged, document=text)
+
+
 def _parse_reply(reply: str) -> list[object]:
     """The reply's ``entities`` list; salvage complete items if truncated.
 
@@ -134,7 +151,7 @@ class LlmExtractor:
     ) -> tuple[Entity, ...]:
         """All LLM-found identifier spans in ``text``, sorted, non-overlapping."""
         reply = self.client.generate(
-            self._prompt(text, escalations),
+            extraction_prompt(text, escalations),
             schema=_SCHEMA,
             seed=self.seed,
             temperature=0.0,
@@ -171,17 +188,6 @@ class LlmExtractor:
                 accepted.append(candidate)
         accepted.sort(key=lambda e: e.start)
         return tuple(accepted)
-
-    def _prompt(self, text: str, escalations: Sequence[Escalation]) -> str:
-        flagged = ""
-        if escalations:
-            spans = "\n".join(
-                f'- "{esc.text}" (chars {esc.start}-{esc.end}, reason: {esc.reason})'
-                for esc in escalations
-            )
-            flagged = _FLAGGED.format(spans=spans)
-        types = ", ".join(t.value for t in STAGE2_TYPES)
-        return _PROMPT.format(types=types, flagged=flagged, document=text)
 
     @staticmethod
     def _valid_type(item: object) -> EntityType | None:

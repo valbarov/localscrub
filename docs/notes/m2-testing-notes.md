@@ -241,6 +241,48 @@ penalized for being right. Redaction recall is the number to trust here.
   real"; "your benchmark should break your plumbing before it breaks your
   model."
 
+## Step 7 — LoRA fine-tune: the specialist experiment closes M2
+
+**What:** the full recipe (docs/finetune.md): `localscrub sft` emits 2000
+prompt→completion pairs — the *exact* inference-time stage-2 prompt (built
+by running stage 1 per note, escalation hints included) paired with gold
+JSON. Qwen3-1.7B-Base + LoRA r=16, bf16, 17 minutes on the RTX 5080
+(16 GB). No real PHI anywhere, including prompts. Train seed 7, eval seed
+42, disjoint.
+
+**Before/after (the roadmap's asked-for numbers):**
+
+| | unparseable replies | MTSamples redaction recall |
+|---|---|---|
+| base 1.7B | 35/35 (every note) | 0.61 (= stage 1 alone) |
+| + LoRA | **0/80** | **0.92** |
+
+Template corpus after: 1.000 redaction recall — but train/eval share the
+same 7 note skeletons, so that row is optimistic by construction and says
+so in results.md.
+
+**What the experiment actually taught:**
+- **Format discipline is the cheapest thing to buy with fine-tuning.** The
+  base model never once produced parseable output; the tuned one never
+  failed. That transition alone converts a useless stage 2 into a working
+  one — before any accuracy gains.
+- **Task learning ≠ generalization.** 2000 examples from 7 templates gave a
+  perfect in-distribution score and a partial out-of-distribution one
+  (0.92 vs the 14B generalist's 0.976 and NER's 0.999 on MTSamples). The
+  gap is the training-data diversity gap, and the recipe documents the fix:
+  mix in MTSamples-injected notes and `--diversify` paraphrases.
+- **The synthetic corpus is the asset.** The whole loop — data, training,
+  eval — runs from `localscrub synth`/`sft` seeds; the specialist can be
+  retrained from scratch in under half an hour on consumer hardware.
+- Engineering footnotes for the article: the RTX 5080 (Blackwell) needs
+  cu13x torch builds; the "before" eval needed a token cap (an untuned
+  model rambles to whatever ceiling it gets — 4096 tokens ≈ minutes/note)
+  and per-note progress output to be debuggable at all.
+- Article hooks: "the fine-tune's first product is not accuracy, it's
+  parseability"; "perfect on templates, 92% on real prose — the difference
+  is your training data's imagination, not your model"; "a de-id specialist
+  you can retrain in 17 minutes."
+
 ## Caveats to state in any write-up
 
 - Steps 1–5 numbers are on the *template* synthetic corpus — easy prose,

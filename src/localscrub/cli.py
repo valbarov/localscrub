@@ -19,6 +19,7 @@ from localscrub.config import ScrubConfig
 from localscrub.corpus import generate_corpus, read_jsonl, write_jsonl
 from localscrub.corpus.diversify import diversify_corpus
 from localscrub.corpus.mtsamples import build_benchmark, fetch
+from localscrub.corpus.sft import build_sft_examples
 from localscrub.evaluation import evaluate
 from localscrub.llm import DEFAULT_HOST, DEFAULT_MODEL, OllamaClient, OllamaError
 from localscrub.recognizers import NerRecognizer, Recognizer, default_recognizers
@@ -284,6 +285,43 @@ def mtsamples(
     else:
         for note in notes:
             typer.echo(json.dumps(note.to_dict(), ensure_ascii=True))
+
+
+@app.command()
+def sft(
+    count: Annotated[
+        int,
+        typer.Option("--count", "-n", min=1, help="Number of training examples."),
+    ] = 2000,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="Corpus seed; keep disjoint from eval seeds."),
+    ] = 7,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", "-o", help="Write JSONL here instead of stdout."),
+    ] = None,
+) -> None:
+    """Build the stage-2 SFT dataset for the LoRA fine-tune recipe.
+
+    One example per synthetic note: the exact stage-2 extraction prompt
+    (stage-1 escalation hints included) paired with the gold answer in the
+    extractor's reply format. See docs/finetune.md.
+    """
+    examples = build_sft_examples(generate_corpus(count, seed=seed))
+    if out is not None:
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with out.open("w", encoding="utf-8", newline="\n") as fh:
+                for example in examples:
+                    fh.write(json.dumps(example, ensure_ascii=False))
+                    fh.write("\n")
+        except OSError as exc:
+            typer.secho(f"cannot write {out}: {exc}", err=True, fg=typer.colors.RED)
+            raise typer.Exit(1) from exc
+    else:
+        for example in examples:
+            typer.echo(json.dumps(example, ensure_ascii=True))
 
 
 @app.command("eval")

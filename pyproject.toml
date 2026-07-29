@@ -41,6 +41,12 @@ ner = [
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.5"]
+train = [
+    "accelerate>=1.14.0",
+    "datasets>=5.0.1",
+    "peft>=0.20.0",
+    "trl>=1.9.2",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/localscrub"]

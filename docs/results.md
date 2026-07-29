@@ -83,6 +83,37 @@ address-clipping weakness (GEO fully redacted 0.29); the combined cascade
 fixes it (1.00) — on this benchmark the two models are complementary rather
 than redundant, unlike on the template corpus.
 
+## LoRA fine-tune: 1.7B specialist, before/after ([recipe](finetune.md))
+
+Qwen3-1.7B-Base, LoRA r=16, 2000 synthetic SFT examples (seed 7, disjoint
+from eval seed 42), 17 minutes on one 16 GB GPU. Evaluated as stage 2 via
+plain HF generation (no schema-constrained decoding — format discipline is
+part of what is measured).
+
+| config | corpus | unparseable | relaxed F1 | redaction recall |
+|---|---|---|---|---|
+| base 1.7B (before) | template 20 | 20/20 | 0.80 | 0.66 (= stage 1 alone) |
+| base 1.7B (before) | MTSamples 15 | 15/15 | 0.75 | 0.61 (= stage 1 alone) |
+| + LoRA (after) | template 50 | 0/50 | **1.00** | **1.000** |
+| + LoRA (after) | MTSamples 30 | 0/30 | 0.87 | **0.924** |
+
+Reading it:
+
+- **Before**: the untuned base model produced unparseable output on every
+  single note — it contributes nothing, and the cascade falls back to the
+  stage-1 baseline. **After**: zero unparseable replies across 80 notes.
+- The perfect template-corpus score is **optimistic by construction** — the
+  train and eval corpora share the same 7 note skeletons (seeds differ,
+  templates don't). The MTSamples row is the honest one: prose the model
+  never saw, 0.61 → 0.92 redaction recall.
+- The 1.7B specialist does not yet beat the 14B generalist (0.976) or the
+  NER extra (0.999) on unseen prose — 2000 template-only examples teach the
+  task format perfectly but narrative generalization only partly. The
+  recipe's stated improvement path: mix MTSamples-injected notes (disjoint
+  transcripts) and `--diversify` paraphrases into training.
+- Latency (~17–20 s/note) is naive `transformers.generate`; serve the
+  adapter through Ollama/vLLM for production-representative numbers.
+
 ## Reading these numbers honestly
 
 - **The NER extra answers the "pretrained model vs fine-tune" question for
