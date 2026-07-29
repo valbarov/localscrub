@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "localscrub"
-version = "0.0.1.dev0"
+version = "0.1.0"
 description = "Local-first PHI/PII de-identification: rule/NER cascade + local LLM. Your data never leaves your machine."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,7 +21,7 @@ keywords = [
   "local-llm",
 ]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Healthcare Industry",
   "Programming Language :: Python :: 3.12",
@@ -29,6 +29,11 @@ classifiers = [
   "Topic :: Text Processing :: Filters",
 ]
 dependencies = ["typer>=0.12"]
+
+[project.urls]
+Repository = "https://github.com/valbarov/localscrub"
+Documentation = "https://github.com/valbarov/localscrub/blob/main/docs/quickstart.md"
+Changelog = "https://github.com/valbarov/localscrub/blob/main/ROADMAP.md"
 
 [project.scripts]
 localscrub = "localscrub.cli:app"
@@ -40,6 +45,10 @@ ner = [
 ]
 
 [dependency-groups]
+bench = [
+    "en-core-web-lg",
+    "presidio-analyzer>=2.2.364",
+]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 train = [
     "accelerate>=1.14.0",
@@ -60,3 +69,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv.sources]
+en-core-web-lg = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl" }

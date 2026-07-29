@@ -147,6 +147,22 @@ class EvalReport:
         return "\n".join([header, *rows])
 
 
+@dataclass(frozen=True, slots=True)
+class NotePrediction:
+    """One system's output for one note, in scoring terms.
+
+    ``spans`` are the typed detections; ``removed`` are the character
+    intervals absent from the system's redacted output (for the cascade
+    that is entities plus fail-closed escalations; for an external
+    baseline it is usually just its detections). Keeping the two separate
+    lets redaction recall credit an untyped removal that typed matching
+    would not.
+    """
+
+    spans: tuple[tuple[EntityType, int, int], ...]
+    removed: tuple[tuple[int, int], ...]
+
+
 def _overlaps(a_start: int, a_end: int, b: GoldSpan) -> bool:
     return a_start < b.end and a_end > b.start
 
@@ -163,15 +179,19 @@ def _covered(span: GoldSpan, intervals: list[tuple[int, int]]) -> bool:
     return pos >= span.end
 
 
-def evaluate(
+def score(
     notes: Sequence[SyntheticNote],
-    config: ScrubConfig | None = None,
-    stage2: Stage2 | None = None,
-    recognizers: Sequence[Recognizer] | None = None,
+    predictions: Sequence[NotePrediction],
 ) -> EvalReport:
-    """Run the analyzer (optionally cascading into stage 2) and score it."""
-    cfg = config if config is not None else ScrubConfig()
-    analyzer = Analyzer(recognizers=recognizers, config=cfg)
+    """Score per-note predictions against gold spans.
+
+    System-agnostic: ``evaluate`` feeds it the cascade's output, and
+    benchmark baselines (e.g. Presidio in ``scripts/bench_presidio.py``)
+    feed it theirs, so every system is measured by identical matching
+    and redaction-recall rules.
+    """
+    if len(notes) != len(predictions):
+        raise ValueError(f"{len(notes)} notes but {len(predictions)} predictions")
     gold_by_type: dict[EntityType, int] = defaultdict(int)
     redacted_by_type: dict[EntityType, int] = defaultdict(int)
     counts: dict[bool, dict[EntityType, list[int]]] = {
@@ -179,41 +199,35 @@ def evaluate(
         False: defaultdict(lambda: [0, 0, 0]),
     }
 
-    for note in notes:
-        result = analyzer.analyze(note.text)
-        if stage2 is not None:
-            result = apply_stage2(result, stage2, cfg)
+    for note, pred in zip(notes, predictions, strict=True):
         for span in note.spans:
             gold_by_type[span.type] += 1
 
         for strict in (True, False):
             matched: set[int] = set()
-            for entity in result.entities:
+            for etype, start, end in pred.spans:
                 hit = None
                 for i, span in enumerate(note.spans):
-                    if i in matched or span.type is not entity.type:
+                    if i in matched or span.type is not etype:
                         continue
                     if strict:
-                        if (entity.start, entity.end) == (span.start, span.end):
+                        if (start, end) == (span.start, span.end):
                             hit = i
                             break
-                    elif _overlaps(entity.start, entity.end, span):
+                    elif _overlaps(start, end, span):
                         hit = i
                         break
                 if hit is None:
-                    counts[strict][entity.type][1] += 1
+                    counts[strict][etype][1] += 1
                 else:
                     matched.add(hit)
-                    counts[strict][entity.type][0] += 1
+                    counts[strict][etype][0] += 1
             for i, span in enumerate(note.spans):
                 if i not in matched:
                     counts[strict][span.type][2] += 1
 
-        removed = [(e.start, e.end) for e in result.entities]
-        if cfg.redact_escalated:
-            removed += [(e.start, e.end) for e in result.escalations]
         for span in note.spans:
-            if _covered(span, removed):
+            if _covered(span, list(pred.removed)):
                 redacted_by_type[span.type] += 1
 
     return EvalReport(
@@ -223,3 +237,31 @@ def evaluate(
         relaxed={t: TypeMetrics(*c) for t, c in counts[False].items()},
         redacted_by_type=dict(redacted_by_type),
     )
+
+
+def evaluate(
+    notes: Sequence[SyntheticNote],
+    config: ScrubConfig | None = None,
+    stage2: Stage2 | None = None,
+    recognizers: Sequence[Recognizer] | None = None,
+) -> EvalReport:
+    """Run the analyzer (optionally cascading into stage 2) and score it."""
+    cfg = config if config is not None else ScrubConfig()
+    analyzer = Analyzer(recognizers=recognizers, config=cfg)
+    predictions: list[NotePrediction] = []
+
+    for note in notes:
+        result = analyzer.analyze(note.text)
+        if stage2 is not None:
+            result = apply_stage2(result, stage2, cfg)
+        removed = [(e.start, e.end) for e in result.entities]
+        if cfg.redact_escalated:
+            removed += [(e.start, e.end) for e in result.escalations]
+        predictions.append(
+            NotePrediction(
+                spans=tuple((e.type, e.start, e.end) for e in result.entities),
+                removed=tuple(removed),
+            )
+        )
+
+    return score(notes, predictions)

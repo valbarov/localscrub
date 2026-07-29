@@ -1,0 +1,106 @@
+# Benchmark: localscrub vs. rules-only vs. cloud
+
+The comparison this project exists to win — and to report honestly where it
+doesn't. Everything here runs on one machine, on public or synthetic data,
+and is exactly reproducible.
+
+## Systems compared
+
+| system | what it is | where your data goes |
+|---|---|---|
+| **Presidio** (`presidio-analyzer` 2.2.364, default recognizers, spaCy `en_core_web_lg`, score ≥ 0.35) | the standard open-source rules-only baseline (ADR 0001: a benchmark baseline, never a runtime dependency) | stays local |
+| **localscrub stage 1** | in-house regex/dictionary/checksum recognizers, pure Python | stays local |
+| **localscrub stage 1 + NER** | + `obi/deid_roberta_i2b2`, a 125M-param token classifier (`[ner]` extra), CPU | stays local |
+| **localscrub cascade (+ LLM)** | + stage-2 local LLM (Ollama, qwen3:14b) for narrative PHI and escalation adjudication | stays local (your GPU) |
+| **cloud de-id APIs** | commercial PHI-detection endpoints | **leaves your machine** — the text to be scrubbed is sent to the provider |
+
+All systems are scored by the same harness (`localscrub.evaluation.score`):
+identical one-to-one span matching, identical redaction-recall definition.
+**Redaction recall** — the fraction of gold spans whose every character is
+removed from the output — is the headline safety number; a partial detection
+that leaves half an address in the text does not count.
+
+## Reproduce
+
+```bash
+localscrub synth -n 500 --seed 42 -o data/corpora/eval.jsonl
+localscrub mtsamples --fetch -n 100 --seed 42 -o data/corpora/mtsamples-100.jsonl
+
+localscrub eval data/corpora/eval.jsonl                # stage 1
+localscrub eval data/corpora/eval.jsonl --ner          # + NER extra
+localscrub eval data/corpora/eval.jsonl --ner --llm    # full cascade (GPU)
+
+uv run --group bench python scripts/bench_presidio.py data/corpora/eval.jsonl
+uv run --group bench python scripts/bench_presidio.py data/corpora/mtsamples-100.jsonl
+```
+
+Presidio type mapping, and what its typed metrics can and cannot be blamed
+for, is documented at the top of `scripts/bench_presidio.py` (short version:
+unmapped Presidio types still get redaction credit — scoring generosity
+always leans toward the baseline, never toward us).
+
+## Template corpus (500 synthetic notes, seed 42)
+
+| system | relaxed F1 | strict F1 | redaction recall | latency/note |
+|---|---|---|---|---|
+| Presidio (rules-only) | 0.73 | 0.59 | 0.78 | 14 ms (CPU) |
+| localscrub stage 1 | 0.79 | 0.74 | 0.66 | µs (CPU) |
+| localscrub stage 1 + NER | **0.97** | **0.85** | **0.94** | 184 ms (CPU) |
+| localscrub cascade (+ LLM) | *pending 500-note rerun (GPU)* | | | |
+
+## MTSamples injection benchmark (authentic prose, 100 notes, seed 42)
+
+Precision is a lower bound on this benchmark for every system (the public
+transcripts contain their own name- and date-like strings not in the injected
+gold) — see [results.md](results.md).
+
+| system | relaxed R | relaxed P† | redaction recall | latency/note |
+|---|---|---|---|---|
+| Presidio (rules-only) | 0.80 | 0.49 | 0.75 | 46 ms (CPU) |
+| localscrub stage 1 | 0.62 | 0.94 | 0.62 | µs (CPU) |
+| localscrub stage 1 + NER | **1.00** | 0.81 | **0.999** | 652 ms (CPU) |
+| localscrub stage 1 + LLM* | **1.00** | 0.89 | 0.976 | 6.0 s (GPU) |
+| localscrub cascade (NER + LLM)* | **1.00** | 0.80 | **1.000** | 6.8 s (GPU) |
+
+† lower bound. \* LLM rows measured on a 30-note subset (210 gold spans);
+to be rerun at 100 notes alongside the 500-note cascade rerun.
+
+## Reading it
+
+- **Presidio beats bare stage 1 on redaction recall** (0.78 vs 0.66; 0.75 vs
+  0.62). No surprise: spaCy gives it person/place names, which stage 1
+  intentionally defers to the `[ner]` extra and stage 2 (ADR 0001). Rules-only
+  localscrub is not the recommended configuration; it exists to be fast,
+  calibrated, and honest about what it cannot see.
+- **With the NER extra, localscrub wins decisively on both corpora**
+  (0.94 vs 0.78 and 0.999 vs 0.75 redaction recall) — and the gap is
+  concentrated exactly where a leak hurts:
+  - **Clinical identifiers**: Presidio has no MRN or health-plan recognizer —
+    it fully redacts 6% of MRNs and 15% of plan IDs on the template corpus
+    (2% and 14% on MTSamples), and only by accident (its UK_NHS and date
+    patterns happening to overlap). localscrub holds these at 1.00 in every
+    configuration.
+  - **Addresses**: Presidio never fully covered a single gold address on
+    either corpus (GEO fully-redacted 0.00; strict F1 0.00) — spaCy tags
+    "Dayton" but drops "412 Birch Lane". Partial address redaction is the
+    canonical re-identification leak.
+- **Presidio's strong suit is names** (NAME relaxed F1 0.94 template, strict
+  0.87 — better boundaries than our NER extra's 0.73). Its structured-type
+  rows (EMAIL, SSN, IP, credit card) are 1.00, same as ours.
+- **Latency**: Presidio 14–46 ms/note; localscrub+NER 184–652 ms/note.
+  Presidio is 4–14× faster than our recommended CPU configuration — if its
+  accuracy profile is acceptable for your data, that is a real advantage;
+  for clinical text the MRN/address rows above say it is not.
+- **Cloud APIs**: not yet measured (requires sending the benchmark corpora to
+  each provider and an account with each; planned before the article). The
+  qualitative row stands regardless of the numbers: the input text crosses
+  your trust boundary — see [threat-model.md](threat-model.md).
+
+## Pending measurements
+
+- [ ] Full-cascade (`--ner --llm`) rerun on the 500-note template corpus and
+      100-note MTSamples benchmark — **needs the local GPU** (qwen3:14b).
+- [ ] Cloud API legs (accuracy, latency, $/note) — needs provider accounts
+      and an explicit decision to send the (synthetic) corpora out.
+- [ ] i2b2/n2c2 2014 corpus for literature-comparable numbers (blocked
+      upstream, request drafted).
