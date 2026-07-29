@@ -68,10 +68,15 @@ Model backend is pluggable:
       tuned 0/80, MTSamples redaction recall 0.61 → 0.92
 
 ### M3 — v0.1
-- [ ] Quickstart docs, honest accuracy table, threat-model / trust-boundary doc
+- [x] Quickstart docs ([docs/quickstart.md](docs/quickstart.md)), honest accuracy
+      table ([docs/results.md](docs/results.md)), threat-model / trust-boundary
+      doc ([docs/threat-model.md](docs/threat-model.md))
 - [ ] PyPI release
 - [ ] Published benchmark: localscrub vs. rules-only vs. cloud APIs
-      (accuracy, latency, cost, and where your data goes)
+      (accuracy, latency, cost, and where your data goes) — Presidio baseline
+      done ([docs/benchmark.md](docs/benchmark.md), `scripts/bench_presidio.py`,
+      `bench` dependency group); pending: full-cascade rerun + LLM legs at full
+      size (**needs the local GPU**), cloud API legs (needs provider accounts)
 
 ### Later
 - [ ] vLLM throughput mode, stream-processing consumer (log pipelines)

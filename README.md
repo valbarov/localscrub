@@ -6,7 +6,8 @@ Your data never leaves your machine: a fast rule/NER pass catches the obvious
 identifiers, and a **local LLM** handles the context-dependent remainder — no
 cloud APIs, no data crossing your trust boundary.
 
-> **Status:** early development, pre-release. See [ROADMAP.md](ROADMAP.md).
+> **Status:** v0.1 — usable, honest about its limits, pre-1.0 API.
+> New here? Start with the **[quickstart](docs/quickstart.md)**. Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Why
 
@@ -37,7 +38,14 @@ localscrub eval data/corpora/dev.jsonl                        # per-entity preci
 ```
 
 Current accuracy numbers (including what stage 1 honestly cannot catch yet)
-live in [docs/results.md](docs/results.md).
+live in [docs/results.md](docs/results.md). On our benchmark of authentic
+medical-transcription prose, localscrub with the `[ner]` extra fully redacts
+**99.9%** of planted identifiers on CPU, vs. **75%** for Presidio, the
+standard rules-only baseline — measured by the same harness, reproducible
+locally: [docs/benchmark.md](docs/benchmark.md).
+
+Deploying on real clinical text? Read the trust-boundary and residual-risk
+discussion first: [docs/threat-model.md](docs/threat-model.md).
 
 Or from Python:
 
