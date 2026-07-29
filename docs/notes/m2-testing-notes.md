@@ -283,6 +283,59 @@ so in results.md.
   is your training data's imagination, not your model"; "a de-id specialist
   you can retrain in 17 minutes."
 
+## Master numbers table (redaction recall — the safety metric)
+
+Every configuration, both corpora, one place. Template = synthetic notes
+(seed 42); MTSamples = injection benchmark on authentic prose. Sample sizes
+in parentheses.
+
+| config | template | MTSamples | latency/note | hardware |
+|---|---|---|---|---|
+| stage 1 (rules) | 0.65 (50) | 0.62 (100) | µs | CPU |
+| stage 1 + NER | 0.944 (50) | 0.999 (100) | 185–652 ms | CPU |
+| stage 1 + LLM (qwen3:14b) | 0.933 (50) | 0.976 (30) | 6–11 s | GPU |
+| stage 1 + NER + LLM | 0.944 (50) | **1.000** (30) | 7–9 s | GPU |
+| stage 1 + base 1.7B (LoRA "before") | 0.66 (20) | 0.61 (15) | 28–34 s† | GPU |
+| stage 1 + tuned 1.7B (LoRA "after") | 1.000* (50) | 0.924 (30) | 17–20 s† | GPU |
+
+\* optimistic: train/eval share note skeletons. † naive `transformers.generate`,
+not production serving. Relaxed/strict P-R-F1 per entity type: docs/results.md.
+
+Other numbers an article might want: 2000 SFT examples, 17-minute training
+run (Qwen3-1.7B-Base, LoRA r=16, RTX 5080 Laptop 16 GB); base model
+unparseable 35/35 notes → tuned 0/80; corpus = 7 templates, 6 note types,
+13 entity types, ~10 gold spans/note; MTSamples = 4999 public transcripts,
+3196 in the 500–3500-char band, 697 gold spans per 100 notes.
+
+## Decisions and dead ends (the paths-not-taken log)
+
+- **Presidio as stage 1 — rejected before M2** (ADR 0001): would collapse
+  the headline benchmark into "Presidio vs Presidio+LLM"; kept as the
+  planned rules-only *baseline* instead, never a dependency.
+- **Model offsets — rejected** (ADR 0002): LLMs can't count characters;
+  verbatim snippets + string search won. The single highest-leverage design
+  decision of the milestone.
+- **Rewrite-and-diff de-id — rejected** (ADR 0002): a paraphrasing model
+  can silently alter clinical content.
+- **spaCy for the `[ner]` extra — superseded**: a de-id-specific token
+  classifier (`obi/deid_roberta_i2b2`) was chosen over general-purpose
+  spaCy NER because it is trained on the exact task; the plan predates the
+  result that made it obvious.
+- **Kaggle re-upload of i2b2 ("relation extraction") — rejected on
+  licensing**: i2b2/n2c2 corpora are under a Harvard DBMI Data Use
+  Agreement prohibiting redistribution; a third-party Kaggle copy conveys
+  no rights (and that particular corpus is the 2010 relations task — no
+  PHI labels anyway). Legitimate route: DBMI Data Portal DUA for the 2014
+  de-id corpus. A privacy tool cannot be sloppy about data provenance.
+- **Operational potholes worth a sidebar**: uv wouldn't swap CPU→CUDA torch
+  without `--reinstall` and an explicit `+cu130` pin (Blackwell needs
+  cu13x); a gitignore *trailing comment* silently unignored the 17 MB
+  MTSamples CSV and it reached the git index once (caught at staging);
+  uncapped schema-constrained decoding looped past a 10-minute timeout
+  (fix: `num_predict` cap + salvage parser); the first "before" eval looked
+  frozen because an untuned model rambles to any token ceiling — per-note
+  progress output and a token cap made it debuggable.
+
 ## Caveats to state in any write-up
 
 - Steps 1–5 numbers are on the *template* synthetic corpus — easy prose,
