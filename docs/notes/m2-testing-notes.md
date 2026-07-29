@@ -291,6 +291,7 @@ in parentheses.
 
 | config | template | MTSamples | latency/note | hardware |
 |---|---|---|---|---|
+| Presidio 2.2.364 + en_core_web_lg (M3 baseline) | 0.784 (500) | 0.752 (100) | 14–46 ms | CPU |
 | stage 1 (rules) | 0.65 (50) | 0.62 (100) | µs | CPU |
 | stage 1 + NER | 0.944 (50) | 0.999 (100) | 185–652 ms | CPU |
 | stage 1 + LLM (qwen3:14b) | 0.933 (50) | 0.976 (30) | 6–11 s | GPU |
@@ -300,6 +301,17 @@ in parentheses.
 
 \* optimistic: train/eval share note skeletons. † naive `transformers.generate`,
 not production serving. Relaxed/strict P-R-F1 per entity type: docs/results.md.
+
+M3 Presidio-baseline hooks (added 2026-07-28, `docs/benchmark.md` for the
+full tables): the baseline beats *bare* stage 1 on redaction recall — spaCy
+gives it names — which is exactly the honest framing the article needs; the
+localscrub+NER win is concentrated where a leak hurts (Presidio fully
+redacts 0 gold addresses on either corpus, 2–6% of MRNs, ≤15% of plan IDs);
+Presidio's NAME *strict* boundaries beat our NER extra (0.87 vs 0.73 F1) —
+a genuinely better-at-something row that makes the comparison credible.
+Scoring generosity leans to the baseline: its unmapped types (NRP, UK_NHS)
+still earn redaction credit. Same harness scores both systems
+(`evaluation.score`, refactored for this).
 
 Other numbers an article might want: 2000 SFT examples, 17-minute training
 run (Qwen3-1.7B-Base, LoRA r=16, RTX 5080 Laptop 16 GB); base model
