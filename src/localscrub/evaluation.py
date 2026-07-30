@@ -18,14 +18,16 @@ was assigned. A system can have poor typing and still redact safely.
 
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from localscrub.analyzer import Analyzer, Stage2, apply_stage2
 from localscrub.config import ScrubConfig
 from localscrub.corpus.generator import GoldSpan, SyntheticNote
 from localscrub.entities import EntityType
+from localscrub.llm import OllamaError
 from localscrub.recognizers import Recognizer
 
 
@@ -68,6 +70,9 @@ class EvalReport:
     strict: dict[EntityType, TypeMetrics]
     relaxed: dict[EntityType, TypeMetrics]
     redacted_by_type: dict[EntityType, int]
+    #: notes scored without stage 2 because the LLM failed even on retry —
+    #: their rows count against the cascade, which is the honest direction
+    llm_failures: int = 0
 
     @property
     def total_gold(self) -> int:
@@ -101,6 +106,7 @@ class EvalReport:
         return {
             "notes": self.notes,
             "gold": self.total_gold,
+            "llm_failures": self.llm_failures,
             "redaction_recall": round(self.redaction_recall, 4),
             "relaxed_overall": self.relaxed_overall.to_dict(),
             "strict_overall": self.strict_overall.to_dict(),
@@ -144,7 +150,13 @@ class EvalReport:
             f"| {rel.recall:.2f} | {rel.f1:.2f} | {st.precision:.2f} "
             f"| {st.recall:.2f} | {st.f1:.2f} | {self.redaction_recall:.2f} |"
         )
-        return "\n".join([header, *rows])
+        table = "\n".join([header, *rows])
+        if self.llm_failures:
+            table += (
+                f"\n\n{self.llm_failures}/{self.notes} notes scored without"
+                " stage 2 (LLM failed after retry)."
+            )
+        return table
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,11 +261,27 @@ def evaluate(
     cfg = config if config is not None else ScrubConfig()
     analyzer = Analyzer(recognizers=recognizers, config=cfg)
     predictions: list[NotePrediction] = []
+    llm_failures = 0
 
-    for note in notes:
+    for index, note in enumerate(notes):
         result = analyzer.analyze(note.text)
         if stage2 is not None:
-            result = apply_stage2(result, stage2, cfg)
+            # One LLM failure must not discard an hours-long run: retry the
+            # note once, then score it without stage 2 — the cascade eats
+            # the miss, which is the honest direction for a safety metric.
+            for attempt in (1, 2):
+                try:
+                    result = apply_stage2(result, stage2, cfg)
+                    break
+                except OllamaError as exc:
+                    if attempt == 2:
+                        llm_failures += 1
+                        warnings.warn(
+                            f"stage 2 failed on note {index} after retry;"
+                            f" scored without it: {exc}",
+                            RuntimeWarning,
+                            stacklevel=2,
+                        )
         removed = [(e.start, e.end) for e in result.entities]
         if cfg.redact_escalated:
             removed += [(e.start, e.end) for e in result.escalations]
@@ -264,4 +292,4 @@ def evaluate(
             )
         )
 
-    return score(notes, predictions)
+    return replace(score(notes, predictions), llm_failures=llm_failures)

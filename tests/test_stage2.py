@@ -171,3 +171,42 @@ def test_evaluate_with_stage2_lifts_name_recall():
     )
     assert cascade.relaxed[EntityType.NAME].recall == 1.0
     assert cascade.redaction_recall > baseline.redaction_recall
+
+
+def test_evaluate_survives_llm_failure_and_counts_it():
+    # An LLM that dies on every request must cost the cascade its stage-2
+    # lift, never the whole run.
+    from localscrub.corpus import generate_corpus
+
+    class DeadLlm:
+        confidence = 0.85
+
+        def extract(self, text, escalations=()):
+            raise OllamaError("boom")
+
+    notes = generate_corpus(3, seed=21)
+    with pytest.warns(RuntimeWarning, match="scored without it"):
+        report = evaluate(notes, stage2=DeadLlm())
+    assert report.llm_failures == 3
+    assert report.notes == 3
+    assert report.to_dict() == evaluate(notes).to_dict() | {"llm_failures": 3}
+    assert "scored without stage 2" in report.format_table()
+
+
+def test_evaluate_retries_transient_llm_failure():
+    from localscrub.corpus import generate_corpus
+
+    class FlakyLlm:
+        confidence = 0.85
+
+        def __init__(self):
+            self.calls = 0
+
+        def extract(self, text, escalations=()):
+            self.calls += 1
+            if self.calls == 1:
+                raise OllamaError("transient")
+            return ()
+
+    report = evaluate(generate_corpus(3, seed=21), stage2=FlakyLlm())
+    assert report.llm_failures == 0
