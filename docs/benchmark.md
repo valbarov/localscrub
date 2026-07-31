@@ -46,7 +46,7 @@ always leans toward the baseline, never toward us).
 | Presidio (rules-only) | 0.73 | 0.59 | 0.78 | 14 ms (CPU) |
 | localscrub stage 1 | 0.79 | 0.74 | 0.66 | µs (CPU) |
 | localscrub stage 1 + NER | **0.97** | **0.85** | **0.94** | 184 ms (CPU) |
-| localscrub cascade (+ LLM) | *pending 500-note rerun (GPU)* | | | |
+| localscrub cascade (NER + LLM) | **0.97** | **0.85** | **0.94** | 17 s (GPU) |
 
 ## MTSamples injection benchmark (authentic prose, 100 notes, seed 42)
 
@@ -59,11 +59,10 @@ gold) — see [results.md](results.md).
 | Presidio (rules-only) | 0.80 | 0.49 | 0.75 | 46 ms (CPU) |
 | localscrub stage 1 | 0.62 | 0.94 | 0.62 | µs (CPU) |
 | localscrub stage 1 + NER | **1.00** | 0.81 | **0.999** | 652 ms (CPU) |
-| localscrub stage 1 + LLM* | **1.00** | 0.89 | 0.976 | 6.0 s (GPU) |
-| localscrub cascade (NER + LLM)* | **1.00** | 0.80 | **1.000** | 6.8 s (GPU) |
+| localscrub stage 1 + LLM | 0.99 | 0.82 | 0.967 | 7.2 s (GPU) |
+| localscrub cascade (NER + LLM) | **1.00** | 0.76 | **0.999** | 7.4 s (GPU) |
 
-† lower bound. \* LLM rows measured on a 30-note subset (210 gold spans);
-to be rerun at 100 notes alongside the 500-note cascade rerun.
+† lower bound.
 
 ## Reading it
 
@@ -87,6 +86,20 @@ to be rerun at 100 notes alongside the 500-note cascade rerun.
 - **Presidio's strong suit is names** (NAME relaxed F1 0.94 template, strict
   0.87 — better boundaries than our NER extra's 0.73). Its structured-type
   rows (EMAIL, SSN, IP, credit card) are 1.00, same as ours.
+- **The LLM stage earns its keep only on real prose.** On the template
+  corpus the cascade's numbers are identical to NER-only (0.97/0.85/0.94)
+  at ~90× the latency — synthetic templates hold no narrative PHI the NER
+  misses. On MTSamples the LLM alone reaches 0.967 redaction recall
+  (vs 0.62 bare) but still trails NER (0.999); NER+LLM matches NER's
+  recall (696/697 gold spans) at lower precision. Stage 2's value is the
+  narrative long tail and escalation adjudication, not bulk detection.
+- **Stage-2 latency is bimodal and its tail is real.** Typical notes take
+  ~5 s on an RTX 5080 Laptop; some notes push schema-constrained decoding
+  to the `num_predict` cap (~50 s), and one note in 500 stalled the server
+  for minutes before erroring. The eval harness retries a failed note once,
+  then scores it without stage 2 and reports it (`llm_failures`; the
+  template-500 run had exactly 1). The 17 s/note template average includes
+  that tail — the median note is far cheaper.
 - **Latency**: Presidio 14–46 ms/note; localscrub+NER 184–652 ms/note.
   Presidio is 4–14× faster than our recommended CPU configuration — if its
   accuracy profile is acceptable for your data, that is a real advantage;
@@ -98,9 +111,7 @@ to be rerun at 100 notes alongside the 500-note cascade rerun.
 
 ## Pending measurements
 
-- [ ] Full-cascade (`--ner --llm`) rerun on the 500-note template corpus and
-      100-note MTSamples benchmark — **needs the local GPU** (qwen3:14b).
-- [ ] Cloud API legs (accuracy, latency, $/note) — needs provider accounts
-      and an explicit decision to send the (synthetic) corpora out.
+- [ ] Cloud API legs (accuracy, latency, $/note) — postponed; needs provider
+      accounts and an explicit decision to send the (synthetic) corpora out.
 - [ ] i2b2/n2c2 2014 corpus for literature-comparable numbers (blocked
       upstream, request drafted).

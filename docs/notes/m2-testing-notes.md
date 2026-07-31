@@ -294,8 +294,8 @@ in parentheses.
 | Presidio 2.2.364 + en_core_web_lg (M3 baseline) | 0.784 (500) | 0.752 (100) | 14–46 ms | CPU |
 | stage 1 (rules) | 0.65 (50) | 0.62 (100) | µs | CPU |
 | stage 1 + NER | 0.944 (50) | 0.999 (100) | 185–652 ms | CPU |
-| stage 1 + LLM (qwen3:14b) | 0.933 (50) | 0.976 (30) | 6–11 s | GPU |
-| stage 1 + NER + LLM | 0.944 (50) | **1.000** (30) | 7–9 s | GPU |
+| stage 1 + LLM (qwen3:14b) | 0.933 (50) | 0.967 (100) | 5–7 s | GPU |
+| stage 1 + NER + LLM | 0.938 (500) | **0.999** (100) | 7–17 s | GPU |
 | stage 1 + base 1.7B (LoRA "before") | 0.66 (20) | 0.61 (15) | 28–34 s† | GPU |
 | stage 1 + tuned 1.7B (LoRA "after") | 1.000* (50) | 0.924 (30) | 17–20 s† | GPU |
 
@@ -312,6 +312,29 @@ a genuinely better-at-something row that makes the comparison credible.
 Scoring generosity leans to the baseline: its unmapped types (NRP, UK_NHS)
 still earn redaction credit. Same harness scores both systems
 (`evaluation.score`, refactored for this).
+
+Full-size LLM rerun hooks (added 2026-07-30; closes the "rerun at 500
+before publishing" note): the headline is a *negative* result the article
+should lead with somewhere — on the synthetic template corpus the full
+cascade is **identical to NER-only to three table digits** (0.97 relaxed
+F1 / 0.85 strict / 0.94 redaction recall at 500 notes) while costing ~90×
+the latency; templates hold no narrative PHI the token classifier misses.
+The LLM's case rests entirely on authentic prose (MTSamples: bare-rules
+0.62 → LLM 0.967; NER+LLM 696/697 gold spans = 0.999) and on the threat
+model (adjudicating escalations). Latency war story with numbers: stage-2
+latency is bimodal — ~5 s/note typical, ~50 s when schema-constrained
+decoding runs away to the 4096-token `num_predict` cap, and in each
+500-note pass exactly one template note stalled the Ollama server
+past its 120 s client timeout (once 30m35s → HTTP 500, once 9m19s; same
+corpus region, deterministic at temperature 0). The first stall killed a
+2h50m run at note ~495 because the eval had no per-note error handling —
+the fix (retry once, then score the note stage-1-only and report an
+`llm_failures` count; commit 45a91a6) turned the second stall into a
+4.8 s retry-and-continue. "One bad note must not cost you the run" is an
+article-worthy operational lesson for anyone benchmarking local LLMs.
+Also article-honest: cascade precision on MTSamples *drops* vs NER alone
+(relaxed P 0.81 → 0.76, lower bound) — the LLM over-flags on prose;
+recall is what it buys.
 
 Other numbers an article might want: 2000 SFT examples, 17-minute training
 run (Qwen3-1.7B-Base, LoRA r=16, RTX 5080 Laptop 16 GB); base model
@@ -355,9 +378,11 @@ unparseable 35/35 notes → tuned 0/80; corpus = 7 templates, 6 note types,
   test; the injected-identifier numbers held up, but real i2b2-style
   evaluation (naturally occurring PHI, not injected) remains out of reach
   until the corpus becomes obtainable.
-- LLM configs sampled at 30–50 notes (calls are ~seconds each); rerun at
-  the full sizes before publishing numbers. Stage-1 and NER configs are at
-  100–500 notes.
+- ~~LLM configs sampled at 30–50 notes; rerun at the full sizes before
+  publishing numbers.~~ Done 2026-07-30: cascade at 500 template / 100
+  MTSamples notes, stage1+LLM at 100 MTSamples notes (the 50-note template
+  stage1+LLM row is the one remaining subset number). Stage-1 and NER
+  configs are at 100–500 notes.
 - The corpus was rebuilt in step 5 (single-span addresses), so step-4 tables
   measured on the older two-span gold are not directly comparable to
   step-5 tables; the four-way table in step 5 is the apples-to-apples one.

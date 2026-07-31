@@ -11,6 +11,8 @@ build/
 # Models & data — never commit weights or corpora
 models/
 data/corpora/
+# raw eval JSON reports; regenerable, numbers live in docs/benchmark.md
+data/benchmarks/
 # MTSamples is public but downloaded, not redistributed
 data/mtsamples/
 *.gguf
