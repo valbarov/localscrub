@@ -46,6 +46,7 @@ always leans toward the baseline, never toward us).
 | Presidio (rules-only) | 0.73 | 0.59 | 0.78 | 14 ms (CPU) |
 | localscrub stage 1 | 0.79 | 0.74 | 0.66 | µs (CPU) |
 | localscrub stage 1 + NER | **0.97** | **0.85** | **0.94** | 184 ms (CPU) |
+| localscrub stage 1 + LLM | **0.97** | 0.86 | **0.94** | 8.0 s (GPU) |
 | localscrub cascade (NER + LLM) | **0.97** | **0.85** | **0.94** | 17 s (GPU) |
 
 ## MTSamples injection benchmark (authentic prose, 100 notes, seed 42)
@@ -87,9 +88,10 @@ gold) — see [results.md](results.md).
   0.87 — better boundaries than our NER extra's 0.73). Its structured-type
   rows (EMAIL, SSN, IP, credit card) are 1.00, same as ours.
 - **The LLM stage earns its keep only on real prose.** On the template
-  corpus the cascade's numbers are identical to NER-only (0.97/0.85/0.94)
-  at ~90× the latency — synthetic templates hold no narrative PHI the NER
-  misses. On MTSamples the LLM alone reaches 0.967 redaction recall
+  corpus every enhanced configuration converges at 0.94 redaction recall —
+  NER-only, LLM-only, and the full cascade are indistinguishable there, at
+  latencies spanning 184 ms to 17 s — synthetic templates hold no narrative
+  PHI the NER misses. On MTSamples the LLM alone reaches 0.967 redaction recall
   (vs 0.62 bare) but still trails NER (0.999); NER+LLM matches NER's
   recall (696/697 gold spans) at lower precision. Stage 2's value is the
   narrative long tail and escalation adjudication, not bulk detection.

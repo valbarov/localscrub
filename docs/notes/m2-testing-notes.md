@@ -294,7 +294,7 @@ in parentheses.
 | Presidio 2.2.364 + en_core_web_lg (M3 baseline) | 0.784 (500) | 0.752 (100) | 14–46 ms | CPU |
 | stage 1 (rules) | 0.65 (50) | 0.62 (100) | µs | CPU |
 | stage 1 + NER | 0.944 (50) | 0.999 (100) | 185–652 ms | CPU |
-| stage 1 + LLM (qwen3:14b) | 0.933 (50) | 0.967 (100) | 5–7 s | GPU |
+| stage 1 + LLM (qwen3:14b) | 0.944 (500) | 0.967 (100) | 5–8 s | GPU |
 | stage 1 + NER + LLM | 0.938 (500) | **0.999** (100) | 7–17 s | GPU |
 | stage 1 + base 1.7B (LoRA "before") | 0.66 (20) | 0.61 (15) | 28–34 s† | GPU |
 | stage 1 + tuned 1.7B (LoRA "after") | 1.000* (50) | 0.924 (30) | 17–20 s† | GPU |
@@ -379,10 +379,13 @@ unparseable 35/35 notes → tuned 0/80; corpus = 7 templates, 6 note types,
   evaluation (naturally occurring PHI, not injected) remains out of reach
   until the corpus becomes obtainable.
 - ~~LLM configs sampled at 30–50 notes; rerun at the full sizes before
-  publishing numbers.~~ Done 2026-07-30: cascade at 500 template / 100
-  MTSamples notes, stage1+LLM at 100 MTSamples notes (the 50-note template
-  stage1+LLM row is the one remaining subset number). Stage-1 and NER
-  configs are at 100–500 notes.
+  publishing numbers.~~ Done 2026-07-30: every configuration is now
+  measured at the full sizes (500 template / 100 MTSamples). A bonus
+  finding from the last leg: on templates all three enhanced configs
+  converge at 0.94 redaction recall (NER 0.944, LLM 0.944, cascade 0.939)
+  — the residual is corpus-bound, not detector-bound; and the pathological
+  stall note only stalls when NER escalation hints are in the prompt
+  (LLM-only: 0 failures, 8.0 s/note flat).
 - The corpus was rebuilt in step 5 (single-span addresses), so step-4 tables
   measured on the older two-span gold are not directly comparable to
   step-5 tables; the four-way table in step 5 is the apples-to-apples one.
