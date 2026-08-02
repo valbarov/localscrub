@@ -216,7 +216,16 @@ at 1.00 in every configuration.
 
 ## The 17-minute specialist
 
-Can a small local model be *taught* the task? `localscrub sft` emits 2,000
+A fair question at this point: if a pretrained 125M classifier already hits
+0.999, why train anything? Because a token classifier cannot take stage 2's
+seat. It tags a fixed label set — ask it about an identifier type it wasn't
+trained on and it has no opinion — and it cannot adjudicate the ambiguous
+spans stage 1 escalates. Stage 2's contract, verbatim snippets plus types
+as JSON, is a conversation, and only an instruction-following model can
+hold up its end. The 14B holds it up at seven seconds a note. The question
+worth 17 minutes of GPU time is whether a small model can be *taught* to.
+
+`localscrub sft` emits 2,000
 training pairs — the exact inference-time stage-2 prompt, escalation hints
 included, paired with gold JSON — and a LoRA recipe (r=16, bf16) tunes
 Qwen3-1.7B-Base in 17 minutes on the laptop.
