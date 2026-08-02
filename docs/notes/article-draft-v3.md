@@ -315,8 +315,9 @@ frozen process.
   (`obi/deid_roberta_i2b2` was trained on i2b2 2014, not MTSamples; for
   the LLM's pretraining the honest answer is unknown). The scored
   identifiers, however, are not MTSamples content: every gold span is
-  synthetic, seeded, and injected - no pretraining corpus contains the
-  answers. What leakage *could* do is make the surrounding prose feel
+  synthetic, seeded, and injected - the identifier strings are generated,
+  not drawn from the transcripts, so memorizing MTSamples does not hand a
+  model the answers. What leakage *could* do is make the surrounding prose feel
   familiar, flattering the numbers relative to truly unseen clinical
   text - one more reason the i2b2 evaluation (behind a data use
   agreement, unlikely to be memorized) is the next benchmark.
