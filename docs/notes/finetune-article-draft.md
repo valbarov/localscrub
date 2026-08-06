@@ -1,5 +1,8 @@
 # I fine-tuned a 1.7B model on data that doesn't exist - a 17-minute recipe
 
+*Published 2026-08-06:
+<https://dev.to/vadim_albarov/i-fine-tuned-a-17b-model-on-data-that-doesnt-exist-a-17-minute-recipe-3850>*
+
 *The full methodology behind localscrub's stage-2 specialist: synthetic
 training data with exact labels, training on the serving distribution, and
 why the fine-tune's first product is not accuracy - it's parseability.*
