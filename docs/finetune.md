@@ -20,8 +20,10 @@ Target hardware: one 16 GB consumer GPU. Results in
   before/after numbers measure.
 - **Seeds are disjoint** (train seed 7, eval seed 42), but the template
   corpus has only 7 note skeletons, so template "after" numbers are
-  optimistic. The MTSamples benchmark — prose the model never saw — is the
-  honest generalization test.
+  optimistic. The MTSamples benchmark — prose the fine-tune never saw — is
+  the honest generalization test. (MTSamples is a well-known public corpus,
+  so the *base* model may have seen the transcripts in pretraining;
+  "unseen" means unseen by the fine-tune.)
 
 ## Recipe
 
@@ -34,12 +36,18 @@ uv run --group train python scripts/finetune_lora.py \
     --data data/corpora/sft-2000.jsonl \
     --out models/stage2-qwen3-1.7b-lora
 
-# 3. before/after as stage 2, standard harness
+# 3. authentic-prose benchmark (public MTSamples CSV, synthetic injections)
+uv run localscrub mtsamples --fetch -n 100 --seed 42 \
+    -o data/corpora/mtsamples-100.jsonl
+
+# 4. before/after as stage 2, standard harness
 uv run --group train python scripts/eval_lora.py \
-    --mtsamples data/corpora/mtsamples-100.jsonl                    # before (base)
+    --template-notes 20 --mts-notes 15 \
+    --mtsamples data/corpora/mtsamples-100.jsonl    # before (base) — fewer notes:
+                                                    # the untuned model takes ~30 s each
 uv run --group train python scripts/eval_lora.py \
     --adapter models/stage2-qwen3-1.7b-lora \
-    --mtsamples data/corpora/mtsamples-100.jsonl                    # after
+    --mtsamples data/corpora/mtsamples-100.jsonl    # after (50 template + 30 MTS notes)
 ```
 
 Hyperparameters (all overridable via flags): LoRA r=16, α=32, dropout 0.05,
