@@ -63,7 +63,8 @@ cards (Luhn-validated), IP addresses, URLs, dates and ages over 89, and
 labeled MRN / health-plan / account identifiers. Uncertain or ambiguous spans
 are redacted fail-closed *and* flagged for stage-2 adjudication. The `[ner]`
 extra (`pip install 'localscrub[ner]'`, then `--ner`) adds a pretrained
-clinical NER model for person/place names on CPU. Stage 2 (`--llm`, or
+clinical NER model for person, facility, and employer names and places,
+on CPU. Stage 2 (`--llm`, or
 `scrub(text, stage2=LlmExtractor())`) runs a local Ollama model for
 narrative identifiers and escalation adjudication; see
 [ADR 0002](docs/decisions/0002-stage2-llm-interface.md) for its contract.
