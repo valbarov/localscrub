@@ -5,15 +5,28 @@ Backed by a token-classification model fine-tuned for de-identification
 stage 1 gains the categories rules cannot see. CPU inference, milliseconds
 per note. Install with ``pip install localscrub[ner]``.
 
-Only labels the regex layer cannot cover are mapped — person names and
-sub-state geography. Dates, phones, emails, and IDs stay with the regex
-recognizers, whose boundaries and calibration are already exact; emitting
-them here would only add boundary noise.
+Only labels the regex layer cannot cover are mapped — person, facility,
+and employer names, and sub-state geography. Dates, phones, emails, and
+IDs stay with the regex recognizers, whose boundaries and calibration are
+already exact; emitting them here would only add boundary noise. Facility
+and employer names map to NAME: Safe Harbor category (A) covers names of
+relatives and employers, not just the patient's.
 
 Adjacent same-type spans separated by short punctuation are merged
 ("4050 Mossbank Blvd" + "Cedar Vale" + "OH" + "44120" becomes one span):
 a partially redacted address is still a leak, so span *completeness* is
-the point of this recognizer.
+the point of this recognizer. A period joins two NAME spans only when the
+left one ends in a single capital letter ("Marcus T." + "Whitfield"):
+elsewhere a period is a sentence boundary, and names on either side of it
+are different people's.
+
+The tokenizer glues a newline plus the next line's first word onto a
+group's last token ("Whitfield\nMRN:"), so a group's spillover onto later
+lines is usually boundary bleed, not detection. But it is not *always*
+bleed — a real name can start the next line — so spillover segments are
+re-checked: the pipeline runs once more on the spillover's own line, and
+the segment survives only if the model still labels it without the
+cross-line context that produced the bleed.
 """
 
 from __future__ import annotations
@@ -29,12 +42,18 @@ DEFAULT_NER_MODEL = "obi/deid_roberta_i2b2"
 _LABEL_MAP: dict[str, EntityType] = {
     "PATIENT": EntityType.NAME,
     "STAFF": EntityType.NAME,
+    "HOSP": EntityType.NAME,  # facility names are Safe Harbor (A) names
+    "PATORG": EntityType.NAME,  # so are employer names
     "LOC": EntityType.GEO_SUBDIVISION,
 }
 
 #: what may separate two spans that are really one identifier: spaces, commas,
 #: hyphens — never newlines or periods, which end the identifier's context
 _JOINABLE = re.compile(r"^[ ,\-–]{1,4}$")
+
+#: the one period that does not end a name's context: a middle initial's
+_INITIAL_GAP = re.compile(r"^\.\s{0,2}$")
+_ENDS_WITH_INITIAL = re.compile(r"(?:^|\s)[A-Z]$")
 
 #: sentence punctuation the model drags into a span is never the identifier's
 _TRAILING_JUNK = re.compile(r"[\s.,;:]+$")
@@ -102,8 +121,9 @@ class NerRecognizer:
     def analyze(self, text: str) -> list[Entity]:
         raw: list[tuple[EntityType, int, int, float]] = []
         seen: set[tuple[EntityType, int, int]] = set()
+        line_cache: dict[tuple[int, int], list[tuple[EntityType, int, int, float]]] = {}
         for chunk_offset, window in _chunks(text):
-            self._analyze_window(text, window, chunk_offset, raw, seen)
+            self._analyze_window(text, window, chunk_offset, raw, seen, line_cache)
 
         raw.sort(key=lambda r: r[1])
         merged: list[tuple[EntityType, int, int, float]] = []
@@ -111,7 +131,12 @@ class NerRecognizer:
             if merged:
                 prev_type, prev_start, prev_end, prev_score = merged[-1]
                 gap = text[prev_end:start]
-                if etype is prev_type and prev_end <= start and _JOINABLE.match(gap):
+                joinable = _JOINABLE.match(gap) or (
+                    etype is EntityType.NAME
+                    and _INITIAL_GAP.match(gap)
+                    and _ENDS_WITH_INITIAL.search(text[prev_start:prev_end])
+                )
+                if etype is prev_type and prev_end <= start and joinable:
                     merged[-1] = (prev_type, prev_start, end, min(prev_score, score))
                     continue
             merged.append((etype, start, end, score))
@@ -135,6 +160,7 @@ class NerRecognizer:
         chunk_offset: int,
         raw: list[tuple[EntityType, int, int, float]],
         seen: set[tuple[EntityType, int, int]],
+        line_cache: dict[tuple[int, int], list[tuple[EntityType, int, int, float]]],
     ) -> None:
         for item in self._pipeline(window):
             entity_type = _LABEL_MAP.get(item.get("entity_group", ""))
@@ -145,8 +171,10 @@ class NerRecognizer:
             score = float(item["score"])
             # The pipeline can aggregate one label run across a paragraph
             # break ("name@example.org.\n\nNext Name"); no identifier spans a
-            # line break, so split model groups at newlines first.
-            for line in re.finditer(r"[^\n]+", text[start:end]):
+            # line break, so split model groups at newlines first. The first
+            # segment is where the model anchored the group; later segments
+            # are usually tokenizer boundary bleed and must be re-earned.
+            for index, line in enumerate(re.finditer(r"[^\n]+", text[start:end])):
                 segment = _TRAILING_JUNK.sub("", line.group())
                 trimmed = segment.lstrip()
                 # A person or place never contains "@": that's the model
@@ -154,7 +182,58 @@ class NerRecognizer:
                 if not trimmed or "@" in trimmed:
                     continue
                 line_start = start + line.start() + (len(segment) - len(trimmed))
+                if index > 0:
+                    self._recheck_spillover(
+                        text, line_start, line_start + len(trimmed), raw, seen, line_cache
+                    )
+                    continue
                 record = (entity_type, line_start, line_start + len(trimmed))
                 if record not in seen:  # overlapping windows re-find spans
                     seen.add(record)
                     raw.append((*record, score))
+
+    def _recheck_spillover(
+        self,
+        text: str,
+        frag_start: int,
+        frag_end: int,
+        raw: list[tuple[EntityType, int, int, float]],
+        seen: set[tuple[EntityType, int, int]],
+        line_cache: dict[tuple[int, int], list[tuple[EntityType, int, int, float]]],
+    ) -> None:
+        """Keep a group's spillover segment only if its own line re-earns it.
+
+        The pipeline runs on the spillover's full line in isolation; whatever
+        it labels *there* — with its own spans, types, and scores — replaces
+        the bled fragment, but only where it overlaps the fragment (the rest
+        of the line was already analyzed in its window).
+        """
+        line_start = text.rfind("\n", 0, frag_start) + 1
+        newline = text.find("\n", frag_start)
+        line_end = len(text) if newline == -1 else newline
+        key = (line_start, line_end)
+        if key not in line_cache:
+            found: list[tuple[EntityType, int, int, float]] = []
+            for item in self._pipeline(text[line_start:line_end]):
+                entity_type = _LABEL_MAP.get(item.get("entity_group", ""))
+                if entity_type is None:
+                    continue
+                start, end = int(item["start"]), int(item["end"])
+                if not 0 <= start < end <= line_end - line_start:
+                    continue
+                found.append(
+                    (entity_type, line_start + start, line_start + end, float(item["score"]))
+                )
+            line_cache[key] = found
+        for entity_type, start, end, score in line_cache[key]:
+            if not (start < frag_end and frag_start < end):
+                continue
+            segment = _TRAILING_JUNK.sub("", text[start:end])
+            trimmed = segment.lstrip()
+            if not trimmed or "@" in trimmed:
+                continue
+            span_start = start + (len(segment) - len(trimmed))
+            record = (entity_type, span_start, span_start + len(trimmed))
+            if record not in seen:
+                seen.add(record)
+                raw.append((*record, score))
