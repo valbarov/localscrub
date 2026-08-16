@@ -10,7 +10,10 @@ parameter, so a malformed reply is an error, not a parse gamble.
 The stage-2 contract is additive and fail-closed:
 
 - stage 2 **adds** entities stage 1 missed; on overlap, the stage-1
-  detection wins (rules are better calibrated where rules apply);
+  detection wins (rules are better calibrated where rules apply) — unless
+  the stage-2 span strictly contains every stage-1 entity it touches, in
+  which case the fuller span supersedes the fragments (redacting more,
+  never less);
 - an escalation the model **confirms** (any extraction overlapping it) is
   resolved; one the model stays silent on **remains escalated** — a local
   model's "no" is not strong enough evidence to unredact anything.
@@ -52,9 +55,18 @@ _SCHEMA: dict[str, object] = {
 _PROMPT = """\
 You are stage 2 of a PHI/PII de-identification pipeline for clinical and
 free-form text. Stage 1 (rules) already caught well-formatted identifiers;
-your job is everything context-dependent: person names, addresses and other
-geographic subdivisions smaller than a state, unusual identifier formats,
-and identifying details buried in narrative.
+your job is everything context-dependent:
+
+- person names, including relatives, providers, and household members (NAME)
+- names of employers, organizations, and healthcare facilities — a clinic
+  name in a letterhead counts (NAME)
+- addresses and other geographic subdivisions smaller than a state (GEO_SUBDIVISION)
+- narrative date elements smaller than a year: months, days, seasons,
+  holidays tied to the person ("passed away in January") — a bare year is
+  NOT an identifier (DATE)
+- occupations, life events, and other details specific enough to identify
+  someone ("retired from the fire department") (OTHER_UNIQUE_ID)
+- unusual identifier formats stage 1's rules would not recognize
 
 List every identifier in the document below. For each, return its type and
 the EXACT verbatim substring as it appears in the document — copy it

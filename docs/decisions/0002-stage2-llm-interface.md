@@ -1,6 +1,6 @@
 # ADR 0002: Stage-2 LLM interface — verbatim snippets, additive merge
 
-- **Status:** accepted
+- **Status:** accepted (amended 2026-08-16: containment supersedes)
 - **Date:** 2026-07-28
 
 ## Context
@@ -24,6 +24,20 @@ via Ollama's `format` parameter. Merge additively in `analyzer.apply_stage2`:
 stage-1 detections win overlaps; escalations the model confirms are resolved;
 escalations the model is silent on remain escalated and redacted. Stage 2
 never removes or shrinks anything stage 1 produced.
+
+**Amendment (2026-08-16) — containment supersedes.** A stage-2 span that
+strictly contains every stage-1 entity it overlaps replaces those entities
+("retired from the fire department" over NER's bare "department"). The
+original rule assumed stage-1 boundaries are the better-calibrated ones,
+which is true for structured identifiers but inverted when stage 1 caught
+only a fragment of a narrative identifier: keeping the fragment redacts
+"department" while leaking "retired from the fire", exactly the partial
+leak the pipeline exists to prevent. Strict containment keeps the original
+rule's spirit — an identical or partially overlapping stage-1 span still
+wins — and the merge still only ever redacts more, never less. The
+superseded fragments' placeholder types are lost in favor of the stage-2
+type; that is the same typing-quality bound the Consequences section
+already accepts.
 
 ## Rationale
 

@@ -110,6 +110,28 @@ def test_stage1_wins_overlaps():
     assert email.stage is Stage.RULES
 
 
+def test_containing_extraction_supersedes_stage1_fragment():
+    # Stage 1 caught only "example.com" of an identifying phrase; keeping the
+    # fragment would leak the rest, so the fuller stage-2 span replaces it
+    # (ADR 0002 amendment: containment supersedes).
+    client = FakeClient(reply_with(("OTHER_UNIQUE_ID", "Contact test@example.com")))
+    result = scrub(NOTE, stage2=LlmExtractor(client))
+    [phrase] = [e for e in result.entities if e.text == "Contact test@example.com"]
+    assert phrase.stage is Stage.LLM
+    assert not any(e.text == "test@example.com" for e in result.entities)
+    assert "Contact test@example.com" not in result.redacted
+
+
+def test_partially_overlapping_extraction_still_dropped():
+    # "test@example" overlaps the EMAIL entity without containing it; the
+    # stage-1 detection keeps its boundaries and the stage-2 span is dropped.
+    client = FakeClient(reply_with(("OTHER_UNIQUE_ID", "Contact test@example")))
+    result = scrub(NOTE, stage2=LlmExtractor(client))
+    [email] = [e for e in result.entities if e.text == "test@example.com"]
+    assert email.type is EntityType.EMAIL
+    assert not any(e.stage is Stage.LLM for e in result.entities)
+
+
 def test_confirmed_escalation_is_resolved():
     text = "Reach me at 555-0142 sometime."
     client = FakeClient(reply_with(("PHONE", "555-0142")))

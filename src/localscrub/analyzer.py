@@ -129,22 +129,34 @@ def apply_stage2(
 ) -> ScrubResult:
     """Merge a stage-2 pass into a stage-1 result (additive, fail-closed).
 
-    Stage-2 entities that overlap a stage-1 detection are dropped — rules
-    are better calibrated where rules apply. Escalations the model confirmed
-    (any extraction overlaps them) are resolved; the rest stay escalated:
-    stage-2 silence never unredacts anything (ADR 0002).
+    On overlap the stage-1 detection wins — rules are better calibrated
+    where rules apply — with one exception: a stage-2 span that strictly
+    contains every stage-1 entity it touches supersedes them ("retired from
+    the fire department" over a bare "department"), because there stage 1
+    saw only a fragment of the identifier and keeping the fragment would
+    leak the rest. Escalations the model confirmed (any extraction overlaps
+    them) are resolved; the rest stay escalated: stage-2 silence never
+    unredacts anything (ADR 0002).
     """
     cfg = config if config is not None else ScrubConfig()
     extracted = tuple(stage2.extract(result.text, result.escalations))
     if not extracted:
         return result
 
-    added = [
-        e
-        for e in extracted
-        if not any(e.start < a.end and a.start < e.end for a in result.entities)
-    ]
-    entities = sorted([*result.entities, *added], key=lambda e: e.start)
+    added: list[Entity] = []
+    superseded: set[tuple[int, int]] = set()
+    for e in extracted:
+        overlapping = [a for a in result.entities if e.start < a.end and a.start < e.end]
+        if not overlapping:
+            added.append(e)
+        elif all(
+            e.start <= a.start and a.end <= e.end and (a.start, a.end) != (e.start, e.end)
+            for a in overlapping
+        ):
+            superseded.update((a.start, a.end) for a in overlapping)
+            added.append(e)
+    kept = [a for a in result.entities if (a.start, a.end) not in superseded]
+    entities = sorted([*kept, *added], key=lambda e: e.start)
     remaining = tuple(
         esc
         for esc in result.escalations
