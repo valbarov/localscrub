@@ -12,6 +12,7 @@ and is exactly reproducible.
 | **localscrub stage 1** | in-house regex/dictionary/checksum recognizers, pure Python | stays local |
 | **localscrub stage 1 + NER** | + `obi/deid_roberta_i2b2`, a 355M-param (RoBERTa-large) token classifier (`[ner]` extra), CPU | stays local |
 | **localscrub stage 1 + NER (onnx)** | the same model as an int8 ONNX export via onnxruntime (`[ner-onnx]` extra, `--ner-backend onnx`), CPU | stays local |
+| **localscrub stage 1 + OpenMed 44M** | `--ner-model OpenMed/OpenMed-PII-SuperClinical-Small-44M-v1`: DeBERTa-v3-small fine-tuned on Nemotron-PII (Apache-2.0), name/place labels only, CPU | stays local |
 | **localscrub cascade (+ LLM)** | + stage-2 local LLM (Ollama, qwen3:14b) for narrative PHI and escalation adjudication | stays local (your GPU) |
 | **cloud de-id APIs** | commercial PHI-detection endpoints | **leaves your machine** — the text to be scrubbed is sent to the provider |
 
@@ -62,6 +63,7 @@ gold) — see [results.md](results.md).
 | localscrub stage 1 | 0.62 | 0.94 | 0.62 | µs (CPU) |
 | localscrub stage 1 + NER | **1.00** | 0.81 | **0.999** | 652 ms (CPU) |
 | localscrub stage 1 + NER (onnx int8) | **1.00** | 0.89 | **0.999** | ~200 ms (CPU)‡ |
+| localscrub stage 1 + OpenMed 44M | **1.00** | **0.93** | **1.000** | ~290 ms (CPU)§ |
 | localscrub stage 1 + LLM | 0.99 | 0.82 | 0.967 | 7.2 s (GPU) |
 | localscrub cascade (NER + LLM) | **1.00** | 0.76 | **0.999** | 7.4 s (GPU) |
 
@@ -72,6 +74,15 @@ results.md); measured 2026-10-12 on a Core Ultra 9 (AVX-VNNI) laptop against
 909 ms for the torch backend in the same session. End-to-end `localscrub
 eval` on the 100 notes, model load included: 42 s vs 2 min 04 s; peak RSS
 0.75 GB vs 1.6 GB. CPUs without VNNI will see less of the speed-up.
+§ torch backend, same session and machine: relaxed F1 0.96, strict F1 0.92,
+NAME precision 0.93 (vs 0.81 for `deid_roberta_i2b2`), GEO precision 0.78
+(vs 0.88), peak RSS 0.73 GB. The 434M Large sibling scores the same at 6× the
+cost. Int8 ONNX of this model drops redaction recall to 0.991 (per-tensor)
+or 0.996 (per-channel) for ~90 ms — not worth it for a safety metric, so
+`--ner-backend onnx` is only recommended with the default model. Run with
+OpenMed's own 55-label de-id instead of inside the cascade, the same model
+scores relaxed P 0.62: it also tags ages, genders, section headers and
+more, and splits names and addresses into fragments.
 
 ## Reading it
 

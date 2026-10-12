@@ -54,6 +54,23 @@ the model to int8 ONNX (a few minutes, once) into `~/.cache/localscrub/onnx`
 Python: `NerRecognizer(backend="onnx")`, or pass the export directory as
 `model=`. The `torch` backend stays the default.
 
+### Smaller and sharper: the OpenMed 44M model
+
+```bash
+localscrub scrub note.txt --ner --ner-model OpenMed/OpenMed-PII-SuperClinical-Small-44M-v1
+```
+
+`--ner-model` accepts any Hugging Face token-classification checkpoint whose
+label set localscrub knows (i2b2-style, or the Nemotron-PII labels of the
+`OpenMed/OpenMed-PII-*` family, Apache-2.0). Only name and place labels are
+used; regex keeps the structured types. On the MTSamples benchmark the 44M
+DeBERTa-v3-small model matches the default's 100% redaction recall with
+*better* name precision (0.93 vs 0.81), at ~290 ms/note and 0.7 GB on CPU —
+a third of the default's cost with no export step. Do not combine it with
+`--ner-backend onnx`: int8 quantization costs this model ~0.5–1% redaction
+recall ([benchmark.md](benchmark.md)). Python: `NerRecognizer(model=...)`,
+or `label_map=` for a label set localscrub does not know.
+
 ## Tier 2 — + local LLM (GPU, seconds/note)
 
 Requires [Ollama](https://ollama.com) running locally with a model pulled

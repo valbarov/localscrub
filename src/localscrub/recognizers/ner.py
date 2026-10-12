@@ -35,6 +35,12 @@ it is ~3x faster and uses half the RAM with identical scores. The export is
 built once on first use and cached under ``~/.cache/localscrub/onnx``
 (override with ``LOCALSCRUB_CACHE``); pass a directory as ``model`` to use
 an export you built yourself.
+
+Any Hugging Face token-classification checkpoint with a known label set can
+stand in for the default via ``model=``: the i2b2 labels of the default, or
+the Nemotron-PII labels of the ``OpenMed/OpenMed-PII-*`` family (Apache-2.0;
+the 44M Small model matches the default's recall on the MTSamples benchmark
+with better name precision, at a third of the cost).
 """
 
 from __future__ import annotations
@@ -43,6 +49,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Iterable
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar, Protocol
@@ -59,14 +66,51 @@ class NerBackend(StrEnum):
     ONNX = "onnx"
 
 
-#: model label -> our taxonomy; unlisted labels are ignored on purpose
-_LABEL_MAP: dict[str, EntityType] = {
+#: model label -> our taxonomy; unlisted labels are ignored on purpose.
+#: i2b2-style labels, as emitted by ``obi/deid_roberta_i2b2``
+I2B2_LABEL_MAP: dict[str, EntityType] = {
     "PATIENT": EntityType.NAME,
     "STAFF": EntityType.NAME,
     "HOSP": EntityType.NAME,  # facility names are Safe Harbor (A) names
     "PATORG": EntityType.NAME,  # so are employer names
     "LOC": EntityType.GEO_SUBDIVISION,
 }
+
+#: Nemotron-PII labels, as emitted by the ``OpenMed/OpenMed-PII-*`` models. The
+#: model also tags dates, phones, IDs, ages, genders and more; all of that is
+#: dropped here — regex owns the structured types, and the rest is not Safe
+#: Harbor PHI. ``state`` *is* mapped although a bare state is not PHI: the
+#: model tags "NM" inside "Quarry Bend, NM 61853" as a separate state span,
+#: and without it the merged address would have a hole in the middle.
+OPENMED_LABEL_MAP: dict[str, EntityType] = {
+    "first_name": EntityType.NAME,
+    "last_name": EntityType.NAME,
+    "company_name": EntityType.NAME,  # employer
+    "street_address": EntityType.GEO_SUBDIVISION,
+    "city": EntityType.GEO_SUBDIVISION,
+    "county": EntityType.GEO_SUBDIVISION,
+    "state": EntityType.GEO_SUBDIVISION,
+    "postcode": EntityType.GEO_SUBDIVISION,
+}
+
+_LABEL_MAPS = (I2B2_LABEL_MAP, OPENMED_LABEL_MAP)
+
+
+def label_map_for(labels: Iterable[str]) -> dict[str, EntityType]:
+    """The label map matching a model's label set (``B-``/``I-`` prefixes tolerated).
+
+    Raises ``ValueError`` for a label set no map covers: silently mapping
+    nothing would make the recognizer a no-op, which is the one failure a
+    de-identifier must never have.
+    """
+    names = {label[2:] if label[:2] in ("B-", "I-") else label for label in labels}
+    for candidate in _LABEL_MAPS:
+        if names & candidate.keys():
+            return candidate
+    raise ValueError(
+        f"no label map for model labels {sorted(names)[:8]}...; pass label_map= explicitly"
+    )
+
 
 #: what may separate two spans that are really one identifier: spaces, commas,
 #: hyphens — never newlines or periods, which end the identifier's context
@@ -194,6 +238,11 @@ class NerRecognizer:
 
     ``backend`` picks the inference engine (see module docstring); an
     explicit ``pipeline`` bypasses loading altogether.
+
+    ``label_map`` translates the model's labels into our taxonomy. Left
+    unset, it is detected from the loaded model's label set (i2b2-style or
+    Nemotron-PII-style); an injected ``pipeline`` with no model config
+    defaults to the i2b2 map.
     """
 
     name: ClassVar[str] = "ner"
@@ -204,10 +253,16 @@ class NerRecognizer:
         *,
         pipeline: TokenClassifier | None = None,
         backend: NerBackend | str = NerBackend.TORCH,
+        label_map: dict[str, EntityType] | None = None,
         confidence_cap: float = 0.95,
     ) -> None:
         self.backend = NerBackend(backend)
         self._pipeline = pipeline if pipeline is not None else _LOADERS[self.backend](model)
+        if label_map is None:
+            config = getattr(getattr(self._pipeline, "model", None), "config", None)
+            id2label = getattr(config, "id2label", None)
+            label_map = label_map_for(id2label.values()) if id2label else I2B2_LABEL_MAP
+        self.label_map = label_map
         self.confidence_cap = confidence_cap
 
     def analyze(self, text: str) -> list[Entity]:
@@ -255,7 +310,7 @@ class NerRecognizer:
         line_cache: dict[tuple[int, int], list[tuple[EntityType, int, int, float]]],
     ) -> None:
         for item in self._pipeline(window):
-            entity_type = _LABEL_MAP.get(item.get("entity_group", ""))
+            entity_type = self.label_map.get(item.get("entity_group", ""))
             if entity_type is None:
                 continue
             start = chunk_offset + int(item["start"])
@@ -307,7 +362,7 @@ class NerRecognizer:
         if key not in line_cache:
             found: list[tuple[EntityType, int, int, float]] = []
             for item in self._pipeline(text[line_start:line_end]):
-                entity_type = _LABEL_MAP.get(item.get("entity_group", ""))
+                entity_type = self.label_map.get(item.get("entity_group", ""))
                 if entity_type is None:
                     continue
                 start, end = int(item["start"]), int(item["end"])

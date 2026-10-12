@@ -35,18 +35,25 @@ def main() -> None:
     """Local-first PHI/PII de-identification. Your data never leaves your machine."""
 
 
-def _recognizers_with_ner(backend: NerBackend) -> tuple[Recognizer, ...]:
+def _recognizers_with_ner(backend: NerBackend, model: str) -> tuple[Recognizer, ...]:
     """Default set plus the pretrained NER model; exit 1 if the extra is missing."""
-    if backend is NerBackend.ONNX and not onnx_cache_dir(DEFAULT_NER_MODEL).is_dir():
+    if (
+        backend is NerBackend.ONNX
+        and not Path(model).is_dir()
+        and not onnx_cache_dir(model).is_dir()
+    ):
         typer.secho(
-            f"first --ner-backend onnx run: exporting {DEFAULT_NER_MODEL} to int8 ONNX "
-            f"in {onnx_cache_dir(DEFAULT_NER_MODEL)} (one-time, a few minutes)",
+            f"first --ner-backend onnx run: exporting {model} to int8 ONNX "
+            f"in {onnx_cache_dir(model)} (one-time, a few minutes)",
             err=True,
         )
     try:
-        ner = NerRecognizer(backend=backend)
+        ner = NerRecognizer(model, backend=backend)
     except ImportError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+    except ValueError as exc:  # unknown label set
+        typer.secho(f"--ner-model {model}: {exc}", err=True, fg=typer.colors.RED)
         raise typer.Exit(1) from exc
     return (*default_recognizers(), ner)
 
@@ -54,6 +61,11 @@ def _recognizers_with_ner(backend: NerBackend) -> tuple[Recognizer, ...]:
 _NER_BACKEND_HELP = (
     "Inference engine for --ner: torch (default) or onnx — an int8 ONNX export, "
     "~3x faster on CPU with the same model (requires the [ner-onnx] extra)."
+)
+_NER_MODEL_HELP = (
+    "Token-classification model for --ner: a Hugging Face id or a local directory. "
+    "Known label sets: i2b2 (the default) and Nemotron-PII "
+    "(e.g. OpenMed/OpenMed-PII-SuperClinical-Small-44M-v1)."
 )
 
 
@@ -136,12 +148,15 @@ def scrub(
     ner_backend: Annotated[
         NerBackend, typer.Option("--ner-backend", help=_NER_BACKEND_HELP)
     ] = NerBackend.TORCH,
+    ner_model: Annotated[str, typer.Option("--ner-model", help=_NER_MODEL_HELP)] = (
+        DEFAULT_NER_MODEL
+    ),
 ) -> None:
     """Scrub PHI/PII from a text file: redacted text + JSON entity report."""
     text, source = _read_input(path)
     config = ScrubConfig(accept_threshold=threshold)
     stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
-    recognizers = _recognizers_with_ner(ner_backend) if ner else None
+    recognizers = _recognizers_with_ner(ner_backend, ner_model) if ner else None
     try:
         result = scrub_text(text, config, stage2=stage2, recognizers=recognizers)
     except OllamaError as exc:
@@ -376,6 +391,9 @@ def eval_corpus(
     ner_backend: Annotated[
         NerBackend, typer.Option("--ner-backend", help=_NER_BACKEND_HELP)
     ] = NerBackend.TORCH,
+    ner_model: Annotated[str, typer.Option("--ner-model", help=_NER_MODEL_HELP)] = (
+        DEFAULT_NER_MODEL
+    ),
 ) -> None:
     """Score the analyzer against a gold corpus: per-entity precision/recall.
 
@@ -393,7 +411,7 @@ def eval_corpus(
         raise typer.Exit(1)
 
     stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
-    recognizers = _recognizers_with_ner(ner_backend) if ner else None
+    recognizers = _recognizers_with_ner(ner_backend, ner_model) if ner else None
     try:
         report = evaluate(
             notes,

@@ -3,7 +3,12 @@ import pytest
 from localscrub.analyzer import scrub
 from localscrub.entities import EntityType, Stage
 from localscrub.recognizers import NerBackend, NerRecognizer, default_recognizers
-from localscrub.recognizers.ner import onnx_cache_dir
+from localscrub.recognizers.ner import (
+    I2B2_LABEL_MAP,
+    OPENMED_LABEL_MAP,
+    label_map_for,
+    onnx_cache_dir,
+)
 
 NOTE = "Pt Alma Quimby lives at 4050 Mossbank Blvd, Cedar Vale, OH 86484 today."
 
@@ -50,9 +55,7 @@ def test_facility_and_employer_labels_map_to_name():
 
 def test_adjacent_same_type_spans_merge():
     # "4050 Mossbank Blvd" + "Cedar Vale" + "OH 86484" -> one address span.
-    pipe = FakePipeline(
-        [item("LOC", 24, 42), item("LOC", 44, 54), item("LOC", 56, 64, score=0.91)]
-    )
+    pipe = FakePipeline([item("LOC", 24, 42), item("LOC", 44, 54), item("LOC", 56, 64, score=0.91)])
     [geo] = NerRecognizer(pipeline=pipe).analyze(NOTE)
     assert geo.text == "4050 Mossbank Blvd, Cedar Vale, OH 86484"
     assert geo.confidence == pytest.approx(0.91)  # merged span keeps the weakest score
@@ -75,9 +78,7 @@ def test_no_merge_across_newlines_or_periods():
     # span; gluing them once cost EMAIL recall 1.00 -> 0.53 in the 50-note
     # eval. The email-shaped "name" is dropped outright (@ filter).
     text = "mail hollis.sablewood@example.org.\n\nQuentin Okafor signed."
-    pipe = FakePipeline(
-        [item("PATIENT", 5, 33), item("PATIENT", 36, 50)]
-    )
+    pipe = FakePipeline([item("PATIENT", 5, 33), item("PATIENT", 36, 50)])
     entities = NerRecognizer(pipeline=pipe).analyze(text)
     assert [e.text for e in entities] == ["Quentin Okafor"]
 
@@ -215,3 +216,42 @@ def test_onnx_cache_dir_honours_env_override(monkeypatch, tmp_path):
     assert onnx_cache_dir("obi/deid_roberta_i2b2") == (
         tmp_path / "onnx" / "obi--deid_roberta_i2b2-int8"
     )
+
+
+def test_label_map_detected_from_model_labels():
+    assert label_map_for(["O", "B-PATIENT", "I-PATIENT", "B-LOC"]) is I2B2_LABEL_MAP
+    assert label_map_for(["O", "first_name", "city", "ssn"]) is OPENMED_LABEL_MAP
+    with pytest.raises(ValueError):
+        label_map_for(["O", "PER", "ORG"])
+
+
+def test_label_map_detected_from_pipeline_config():
+    class Config:
+        id2label = {0: "O", 1: "first_name", 2: "last_name", 3: "city", 4: "state"}
+
+    class Model:
+        config = Config()
+
+    pipe = FakePipeline(
+        [
+            item("first_name", 3, 7),
+            item("last_name", 8, 14),
+            item("street_address", 24, 42),
+            item("city", 44, 54),
+            item("state", 56, 58),
+            item("postcode", 59, 64),
+        ]
+    )
+    pipe.model = Model()
+    rec = NerRecognizer(pipeline=pipe)
+    assert rec.label_map is OPENMED_LABEL_MAP
+    [name, geo] = rec.analyze(NOTE)
+    assert name.type is EntityType.NAME
+    assert name.text == "Alma Quimby"  # first + last merge into one span
+    assert geo.text == "4050 Mossbank Blvd, Cedar Vale, OH 86484"  # state keeps the address whole
+
+
+def test_explicit_label_map_wins():
+    pipe = FakePipeline([item("PER", 3, 14)])
+    rec = NerRecognizer(pipeline=pipe, label_map={"PER": EntityType.NAME})
+    assert [e.text for e in rec.analyze(NOTE)] == ["Alma Quimby"]

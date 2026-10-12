@@ -31,6 +31,7 @@ localscrub scrub notes.txt --fail-on-detect     # CI gate: exit 3 if anything fo
 localscrub scrub notes.txt --llm                # + stage 2: local LLM via Ollama
 localscrub scrub notes.txt --ner                # + pretrained clinical NER (CPU)
 localscrub scrub notes.txt --ner --ner-backend onnx   # same model, int8 ONNX: ~3x faster
+localscrub scrub notes.txt --ner --ner-model OpenMed/OpenMed-PII-SuperClinical-Small-44M-v1  # 44M model, sharper names
 
 localscrub synth -n 500 --seed 42 -o data/corpora/dev.jsonl   # synthetic eval corpus
 localscrub synth -n 500 --seed 42 --diversify -o dev.jsonl    # + local-LLM paraphrase (Ollama)
