@@ -20,7 +20,7 @@ from localscrub.entities import SAFE_HARBOR, Entity, EntityType, Stage
 from localscrub.llm import OllamaClient, OllamaError
 from localscrub.stage2 import LlmExtractor
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "SAFE_HARBOR",

@@ -6,7 +6,7 @@ Your data never leaves your machine: a fast rule/NER pass catches the obvious
 identifiers, and a **local LLM** handles the context-dependent remainder — no
 cloud APIs, no data crossing your trust boundary.
 
-> **Status:** v0.1 — usable, honest about its limits, pre-1.0 API.
+> **Status:** v0.2 — usable, honest about its limits, pre-1.0 API.
 > New here? Start with the **[quickstart](docs/quickstart.md)**. Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Why
