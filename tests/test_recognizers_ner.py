@@ -2,7 +2,8 @@ import pytest
 
 from localscrub.analyzer import scrub
 from localscrub.entities import EntityType, Stage
-from localscrub.recognizers import NerRecognizer, default_recognizers
+from localscrub.recognizers import NerBackend, NerRecognizer, default_recognizers
+from localscrub.recognizers.ner import onnx_cache_dir
 
 NOTE = "Pt Alma Quimby lives at 4050 Mossbank Blvd, Cedar Vale, OH 86484 today."
 
@@ -195,3 +196,22 @@ def test_integrates_with_default_recognizers():
     types = {e.type for e in result.entities}
     assert EntityType.NAME in types
     assert EntityType.EMAIL in types
+
+
+def test_backend_is_validated():
+    with pytest.raises(ValueError):
+        NerRecognizer(pipeline=FakePipeline([]), backend="tensorrt")
+
+
+def test_explicit_pipeline_skips_loading_for_any_backend():
+    # No extra installed in CI; an injected pipeline must never trigger a load.
+    rec = NerRecognizer(pipeline=FakePipeline([]), backend="onnx")
+    assert rec.backend is NerBackend.ONNX
+    assert rec.analyze(NOTE) == []
+
+
+def test_onnx_cache_dir_honours_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALSCRUB_CACHE", str(tmp_path))
+    assert onnx_cache_dir("obi/deid_roberta_i2b2") == (
+        tmp_path / "onnx" / "obi--deid_roberta_i2b2-int8"
+    )

@@ -144,7 +144,7 @@ Reading it:
 ## Reading these numbers honestly
 
 - **The NER extra answers the "pretrained model vs fine-tune" question for
-  the template corpus**: a 125M-parameter token classifier trained on the
+  the template corpus**: a 355M-parameter token classifier trained on the
   i2b2 de-id task gets the same relaxed F1 and *better* full-span address
   coverage than a 14B generative model, ~35× faster, on CPU. Since the
   2026-08-16 prompt and merge changes, adding the LLM on top of NER pays

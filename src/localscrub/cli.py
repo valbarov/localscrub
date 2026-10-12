@@ -22,7 +22,8 @@ from localscrub.corpus.mtsamples import build_benchmark, fetch
 from localscrub.corpus.sft import build_sft_examples
 from localscrub.evaluation import evaluate
 from localscrub.llm import DEFAULT_HOST, DEFAULT_MODEL, OllamaClient, OllamaError
-from localscrub.recognizers import NerRecognizer, Recognizer, default_recognizers
+from localscrub.recognizers import NerBackend, NerRecognizer, Recognizer, default_recognizers
+from localscrub.recognizers.ner import DEFAULT_NER_MODEL, onnx_cache_dir
 from localscrub.report import build_report, write_audit
 from localscrub.stage2 import LlmExtractor
 
@@ -34,14 +35,26 @@ def main() -> None:
     """Local-first PHI/PII de-identification. Your data never leaves your machine."""
 
 
-def _recognizers_with_ner() -> tuple[Recognizer, ...]:
+def _recognizers_with_ner(backend: NerBackend) -> tuple[Recognizer, ...]:
     """Default set plus the pretrained NER model; exit 1 if the extra is missing."""
+    if backend is NerBackend.ONNX and not onnx_cache_dir(DEFAULT_NER_MODEL).is_dir():
+        typer.secho(
+            f"first --ner-backend onnx run: exporting {DEFAULT_NER_MODEL} to int8 ONNX "
+            f"in {onnx_cache_dir(DEFAULT_NER_MODEL)} (one-time, a few minutes)",
+            err=True,
+        )
     try:
-        ner = NerRecognizer()
+        ner = NerRecognizer(backend=backend)
     except ImportError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(1) from exc
     return (*default_recognizers(), ner)
+
+
+_NER_BACKEND_HELP = (
+    "Inference engine for --ner: torch (default) or onnx — an int8 ONNX export, "
+    "~3x faster on CPU with the same model (requires the [ner-onnx] extra)."
+)
 
 
 def _read_input(path: Path | None) -> tuple[str, str]:
@@ -120,12 +133,15 @@ def scrub(
             "(requires the [ner] extra).",
         ),
     ] = False,
+    ner_backend: Annotated[
+        NerBackend, typer.Option("--ner-backend", help=_NER_BACKEND_HELP)
+    ] = NerBackend.TORCH,
 ) -> None:
     """Scrub PHI/PII from a text file: redacted text + JSON entity report."""
     text, source = _read_input(path)
     config = ScrubConfig(accept_threshold=threshold)
     stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
-    recognizers = _recognizers_with_ner() if ner else None
+    recognizers = _recognizers_with_ner(ner_backend) if ner else None
     try:
         result = scrub_text(text, config, stage2=stage2, recognizers=recognizers)
     except OllamaError as exc:
@@ -357,6 +373,9 @@ def eval_corpus(
             help="Add the pretrained clinical NER recognizer (requires the [ner] extra).",
         ),
     ] = False,
+    ner_backend: Annotated[
+        NerBackend, typer.Option("--ner-backend", help=_NER_BACKEND_HELP)
+    ] = NerBackend.TORCH,
 ) -> None:
     """Score the analyzer against a gold corpus: per-entity precision/recall.
 
@@ -374,7 +393,7 @@ def eval_corpus(
         raise typer.Exit(1)
 
     stage2 = LlmExtractor(OllamaClient(model=model, host=ollama_host)) if llm else None
-    recognizers = _recognizers_with_ner() if ner else None
+    recognizers = _recognizers_with_ner(ner_backend) if ner else None
     try:
         report = evaluate(
             notes,

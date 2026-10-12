@@ -30,6 +30,7 @@ localscrub scrub --report-only < notes.txt      # detect without rewriting
 localscrub scrub notes.txt --fail-on-detect     # CI gate: exit 3 if anything found
 localscrub scrub notes.txt --llm                # + stage 2: local LLM via Ollama
 localscrub scrub notes.txt --ner                # + pretrained clinical NER (CPU)
+localscrub scrub notes.txt --ner --ner-backend onnx   # same model, int8 ONNX: ~3x faster
 
 localscrub synth -n 500 --seed 42 -o data/corpora/dev.jsonl   # synthetic eval corpus
 localscrub synth -n 500 --seed 42 --diversify -o dev.jsonl    # + local-LLM paraphrase (Ollama)
@@ -64,7 +65,8 @@ labeled MRN / health-plan / account identifiers. Uncertain or ambiguous spans
 are redacted fail-closed *and* flagged for stage-2 adjudication. The `[ner]`
 extra (`pip install 'localscrub[ner]'`, then `--ner`) adds a pretrained
 clinical NER model for person, facility, and employer names and places,
-on CPU. Stage 2 (`--llm`, or
+on CPU; `[ner-onnx]` with `--ner-backend onnx` runs the same model as an
+int8 ONNX export, ~3× faster. Stage 2 (`--llm`, or
 `scrub(text, stage2=LlmExtractor())`) runs a local Ollama model for
 narrative identifiers and escalation adjudication; see
 [ADR 0002](docs/decisions/0002-stage2-llm-interface.md) for its contract.

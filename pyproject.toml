@@ -43,6 +43,14 @@ ner = [
     "torch>=2.13.0",
     "transformers>=4.40",
 ]
+# --ner-backend onnx: int8 ONNX export via optimum (torch/transformers still
+# needed for the one-time export)
+ner-onnx = [
+    "torch>=2.13.0",
+    "transformers>=4.40",
+    "optimum[onnxruntime]>=2.0",
+    "onnx>=1.21",
+]
 
 [dependency-groups]
 bench = [

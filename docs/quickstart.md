@@ -36,10 +36,23 @@ pip install 'localscrub[ner]'
 localscrub scrub note.txt --ner
 ```
 
-Adds `obi/deid_roberta_i2b2` — a 125M-parameter token classifier trained on
-the i2b2 de-identification task — for names and places, on CPU. On our
-benchmark of authentic medical-transcription prose this tier fully redacts
-**99.9%** of planted identifiers ([benchmark.md](benchmark.md)).
+Adds `obi/deid_roberta_i2b2` — a 355M-parameter (RoBERTa-large) token
+classifier trained on the i2b2 de-identification task — for names and places,
+on CPU. On our benchmark of authentic medical-transcription prose this tier
+fully redacts **99.9%** of planted identifiers ([benchmark.md](benchmark.md)).
+
+### Faster on CPU: the ONNX int8 backend
+
+```bash
+pip install 'localscrub[ner-onnx]'
+localscrub scrub note.txt --ner --ner-backend onnx
+```
+
+Same model, same scores, ~3× faster and half the RAM: the first run exports
+the model to int8 ONNX (a few minutes, once) into `~/.cache/localscrub/onnx`
+(override with `LOCALSCRUB_CACHE`); later runs load it from there. From
+Python: `NerRecognizer(backend="onnx")`, or pass the export directory as
+`model=`. The `torch` backend stays the default.
 
 ## Tier 2 — + local LLM (GPU, seconds/note)
 

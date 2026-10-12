@@ -10,7 +10,7 @@ from localscrub.recognizers.dates import AgeOver89Recognizer, DateRecognizer
 from localscrub.recognizers.financial import AccountNumberRecognizer, CreditCardRecognizer
 from localscrub.recognizers.government import SsnRecognizer
 from localscrub.recognizers.medical import HealthPlanIdRecognizer, MrnRecognizer
-from localscrub.recognizers.ner import NerRecognizer
+from localscrub.recognizers.ner import NerBackend, NerRecognizer
 from localscrub.recognizers.network import IpAddressRecognizer, UrlRecognizer
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "HealthPlanIdRecognizer",
     "IpAddressRecognizer",
     "MrnRecognizer",
+    "NerBackend",
     "NerRecognizer",
     "Pattern",
     "PhoneFaxRecognizer",

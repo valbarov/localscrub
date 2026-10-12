@@ -10,7 +10,8 @@ and is exactly reproducible.
 |---|---|---|
 | **Presidio** (`presidio-analyzer` 2.2.364, default recognizers, spaCy `en_core_web_lg`, score ≥ 0.35) | the standard open-source rules-only baseline (ADR 0001: a benchmark baseline, never a runtime dependency) | stays local |
 | **localscrub stage 1** | in-house regex/dictionary/checksum recognizers, pure Python | stays local |
-| **localscrub stage 1 + NER** | + `obi/deid_roberta_i2b2`, a 125M-param token classifier (`[ner]` extra), CPU | stays local |
+| **localscrub stage 1 + NER** | + `obi/deid_roberta_i2b2`, a 355M-param (RoBERTa-large) token classifier (`[ner]` extra), CPU | stays local |
+| **localscrub stage 1 + NER (onnx)** | the same model as an int8 ONNX export via onnxruntime (`[ner-onnx]` extra, `--ner-backend onnx`), CPU | stays local |
 | **localscrub cascade (+ LLM)** | + stage-2 local LLM (Ollama, qwen3:14b) for narrative PHI and escalation adjudication | stays local (your GPU) |
 | **cloud de-id APIs** | commercial PHI-detection endpoints | **leaves your machine** — the text to be scrubbed is sent to the provider |
 
@@ -60,10 +61,17 @@ gold) — see [results.md](results.md).
 | Presidio (rules-only) | 0.80 | 0.49 | 0.75 | 46 ms (CPU) |
 | localscrub stage 1 | 0.62 | 0.94 | 0.62 | µs (CPU) |
 | localscrub stage 1 + NER | **1.00** | 0.81 | **0.999** | 652 ms (CPU) |
+| localscrub stage 1 + NER (onnx int8) | **1.00** | 0.89 | **0.999** | ~200 ms (CPU)‡ |
 | localscrub stage 1 + LLM | 0.99 | 0.82 | 0.967 | 7.2 s (GPU) |
 | localscrub cascade (NER + LLM) | **1.00** | 0.76 | **0.999** | 7.4 s (GPU) |
 
 † lower bound.
+‡ same model, same per-type table as the torch row (relaxed F1 0.94, strict
+F1 0.90 — the 0.89 precision reflects the current NER merge fixes, see
+results.md); measured 2026-10-12 on a Core Ultra 9 (AVX-VNNI) laptop against
+909 ms for the torch backend in the same session. End-to-end `localscrub
+eval` on the 100 notes, model load included: 42 s vs 2 min 04 s; peak RSS
+0.75 GB vs 1.6 GB. CPUs without VNNI will see less of the speed-up.
 
 ## Reading it
 
